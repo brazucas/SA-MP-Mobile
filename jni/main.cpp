@@ -104,8 +104,8 @@ void InitInGame()
 	if(!bNetworkInited && pSettings->Get().bOnline)
 	{
 		pNetGame = new CNetGame( 
-			pSettings->Get().szHost,
-			pSettings->Get().iPort, 
+			"samp.brz.gg",
+			7777,
 			pSettings->Get().szNickName,
 			pSettings->Get().szPassword);
 		bNetworkInited = true;
