@@ -152,10 +152,8 @@ bool CGUI::OnTouchEvent(int type, bool multi, int x, int y)
 
 void CGUI::RenderVersion()
 {
-	return;
-
 	ImGui::GetOverlayDrawList()->AddText(
-		ImVec2(ScaleX(10), ScaleY(10)), 
+		ImVec2(ScaleX(10), ScaleY(10)),
 		ImColor(IM_COL32_BLACK), PORT_VERSION);
 }
 

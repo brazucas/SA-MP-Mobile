@@ -1,6 +1,22 @@
 # SA-MP Mobile
 
-[Chinese edition](https://github.com/SA-MP-Mobile/SA-MP-Mobile/README-CN.MD)
+## Compilation on MacOS / Linux
+
+Compile C++ Project
+
+```sudo NDK_PROJECT_PATH=~/htdocs/BRZ/SA-MP-Mobile/ NDK_DEBUG=0 ~/Downloads/android-ndk-r14b/ndk-build -B```
+
+Move libsamp.so to Android project
+
+```cp -fR ~/htdocs/BRZ/SA-MP-Mobile/libs/libsamp.so ~/htdocs/BRZ/SA-MP-Mobile/files/apk/lib/armeabi-v7a/libsamp.so```
+
+Generate APK
+
+```java -jar /Users/pedropapadopolis/Downloads/apktool_2.4.1.jar b ~/htdocs/BRZ/SA-MP-Mobile/files/apk -o ~/htdocs/BRZ/SA-MP-Mobile/files/brzlauncher.apk -f```
+
+Sign APK
+
+```jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore ~/htdocs/BRZ/SA-MP-Mobile/files/sampandroid.jks ~/htdocs/BRZ/SA-MP-Mobile/files/apk/dist/brzlauncher.apk sampandroid```
 
 Forked from [SAMP-Android](https://github.com/y-kalcor/SA-MP-Android "SAMP-Android")
 

@@ -105,7 +105,7 @@ void InitInGame()
 	{
 		pNetGame = new CNetGame( 
 			"samp.brz.gg",
-			7777,
+			7778,
 			pSettings->Get().szNickName,
 			pSettings->Get().szPassword);
 		bNetworkInited = true;

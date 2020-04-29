@@ -156,9 +156,9 @@ void RenderSplashScreen()
 
 	ImGui::GetOverlayDrawList()->AddText(ImVec2(0, 0), colors[color_scheme][1], 
 		"\n\t"
-		u8"SAMP-Android\n\t"
-		u8"Source vk.com/android.samp\n\t"
-		u8"Forked https://github.com/Hobr/SAMP-Android");
+		u8"Brazuca's Server\n\t"
+		u8"Sempre um passo a frente.\n\t"
+		u8"Projeto original de Hobr / vk.com/samp.android");
 
 	ImGui::EndFrame();
 	ImGui::Render();
