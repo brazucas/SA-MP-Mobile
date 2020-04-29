@@ -82,7 +82,7 @@ void InitGame(RPCParameters *rpcParams)
 	pGame->SetWorldWeather(pNetGame->m_byteWeather);
 	pGame->ToggleCJWalk(pNetGame->m_bUseCJWalk);
 
-	if(pChatWindow) pChatWindow->AddDebugMessage("Connected to {B9C9BF}%.64s", pNetGame->m_szHostName);
+	if(pChatWindow) pChatWindow->AddDebugMessage("Conectado ao {B9C9BF}%.64s", pNetGame->m_szHostName);
 }
 
 void ServerJoin(RPCParameters *rpcParams)

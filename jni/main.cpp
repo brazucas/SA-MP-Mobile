@@ -70,7 +70,7 @@ void InitInMenu()
 {
 	pGame = new CGame();
 	pGame->InitInMenu();
-	
+
 	if(pSettings->Get().bDebug)
 		pDebug = new CDebug();
 
@@ -103,11 +103,11 @@ void InitInGame()
 
 	if(!bNetworkInited && pSettings->Get().bOnline)
 	{
-		pNetGame = new CNetGame( 
+		pNetGame = new CNetGame(
 			"samp.brz.gg",
-			7684,
+			7777, // 7684 - QA, 7777 - Prod
 			pSettings->Get().szNickName,
-			"qa");
+            pSettings->Get().szPassword); // Senha para o QA: qa
 		bNetworkInited = true;
 		return;
 	}
@@ -131,9 +131,9 @@ void handler(int signum, siginfo_t *info, void* contextPtr)
 		Log("libGTASA base address: 0x%X", g_libGTASA);
 		Log("register states:");
 
-		Log("r0: 0x%X, r1: 0x%X, r2: 0x%X, r3: 0x%X", 
-			context->uc_mcontext.arm_r0, 
-			context->uc_mcontext.arm_r1, 
+		Log("r0: 0x%X, r1: 0x%X, r2: 0x%X, r3: 0x%X",
+			context->uc_mcontext.arm_r0,
+			context->uc_mcontext.arm_r1,
 			context->uc_mcontext.arm_r2,
 			context->uc_mcontext.arm_r3);
 		Log("r4: 0x%x, r5: 0x%x, r6: 0x%x, r7: 0x%x",
@@ -201,7 +201,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved)
 }
 
 void Log(const char *fmt, ...)
-{	
+{
 	char buffer[0xFF];
 	static FILE* flLog = nullptr;
 

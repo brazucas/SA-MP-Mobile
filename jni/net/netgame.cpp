@@ -72,7 +72,7 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char* szPlayerName, 
 
 	pGame->EnableClock(false);
 	pGame->EnableZoneNames(false);
-	if(pChatWindow) pChatWindow->AddDebugMessage("{FFFFFF}SA-MP {B9C9BF}" SAMP_VERSION " {FFFFFF}Started");
+	if(pChatWindow) pChatWindow->AddDebugMessage("{FFFFFF}SA-MP {B9C9BF}" SAMP_VERSION " {FFFFFF}Iniciado");
 }
 
 CNetGame::~CNetGame()
@@ -186,12 +186,12 @@ void CNetGame::UpdateNetwork()
 			break;
 
 			case ID_CONNECTION_ATTEMPT_FAILED:
-			pChatWindow->AddDebugMessage("The server didn't respond. Retrying..");
+			pChatWindow->AddDebugMessage("O servidor não respondeu. Reconectando...");
 			SetGameState(GAMESTATE_WAIT_CONNECT);
 			break;
 
 			case ID_NO_FREE_INCOMING_CONNECTIONS:
-			pChatWindow->AddDebugMessage("The server is full. Retrying...");
+			pChatWindow->AddDebugMessage("O servidor está cheio. Reconectando...");
 			SetGameState(GAMESTATE_WAIT_CONNECT);
 			break;
 
@@ -208,15 +208,15 @@ void CNetGame::UpdateNetwork()
 			break;
 
 			case ID_FAILED_INITIALIZE_ENCRIPTION:
-			pChatWindow->AddDebugMessage("Failed to initialize encryption.");
+			pChatWindow->AddDebugMessage("Falha ao iniciar a criptografia.");
 			break;
 
 			case ID_CONNECTION_BANNED:
-			pChatWindow->AddDebugMessage("You are banned from this server.");
+			pChatWindow->AddDebugMessage("Você está banido do servidor.");
 			break;
 
 			case ID_INVALID_PASSWORD:
-			pChatWindow->AddDebugMessage("Wrong server password.");
+			pChatWindow->AddDebugMessage("Senha do servidor incorreta.");
 			m_pRakClient->Disconnect(0);
 			break;
 
@@ -438,7 +438,7 @@ void CNetGame::Packet_ConnectionLost(Packet* pkt)
 	if(m_pRakClient) m_pRakClient->Disconnect(0);
 
 	if(pChatWindow)
-		pChatWindow->AddDebugMessage("Lost connection to the server. Reconnecting..");
+		pChatWindow->AddDebugMessage("Conexão com o servidor perdida. Reconectando...");
 
 	ShutDownForGameRestart();
 
@@ -454,7 +454,7 @@ void CNetGame::Packet_ConnectionLost(Packet* pkt)
 void CNetGame::Packet_ConnectionSucceeded(Packet* pkt)
 {
 	if(pChatWindow)
-		pChatWindow->AddDebugMessage("Connected. Joining the game...");
+		pChatWindow->AddDebugMessage("Conectado. Entrando no servidor...");
 	SetGameState(GAMESTATE_AWAIT_JOIN);
 
 	RakNet::BitStream bsSuccAuth((unsigned char *)pkt->data, pkt->length, false);

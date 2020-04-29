@@ -1,0 +1,180 @@
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Brazuca's Server Android</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.1/css/bulma.css">
+    <style>
+        .container {
+            max-width: 600px;
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+
+        .hero {
+            margin-bottom: 30px
+        }
+
+        p {
+            margin: 0.75em 0;
+        }
+
+        hr {
+            margin: 2.5em 0;
+        }
+
+        .disclaimer {
+            opacity: 0.7
+        }
+
+        .form {
+            margin: 35px 0;
+            background: #fafafa;
+            border-radius: 5px;
+        }
+
+        .form .title {
+            background: #eee;
+            border-top-left-radius: 4px;
+            border-top-right-radius: 4px;
+            padding: 15px 20px;
+            margin-bottom: 0;
+            font-weight: bold;
+        }
+
+        .form .body {
+
+            padding: 20px 20px;
+        }
+
+        .form .field {
+            margin-bottom: 1.5em
+        }
+    </style>
+</head>
+
+<body data-gr-c-s-loaded="true">
+
+<section class="hero is-info is-bold">
+    <div class="hero-body">
+        <div class="container">
+            <h1 class="title">
+                BRZ Launcher (Android)
+            </h1>
+            <h2 class="subtitle">
+                Projeto em desenvolvimento para jogar no servidor do Brazuca's no Android. Acompanhe o desenvolvimento
+                em <a href="https://github.com/brazucas/SA-MP-Mobile">https://github.com/brazucas/SA-MP-Mobile</a>.
+            </h2>
+        </div>
+    </div>
+</section>
+
+<div class="container">
+
+    <p>
+        <strong>Atenção: </strong> O tutorial abaixo se refere a um projeto ainda em desenvolvimento, em estágio
+        inicial. Crashes e bugs
+        <strong>irão</strong> acontecer. Esta página foi divulgada apenas para um pequeno número de pessoas, se você
+        chegou até aqui e pretende
+        continuar com a instalação do Launcher do Brazuca's, todo os efeitos da instalação e utilização é por sua
+        própria conta e risco. Lembre-se
+        de sempre reportar os bugs encontrados se possível com imagens e vídeos para que possamos ter uma maior precisão
+        nas correções.
+    </p>
+
+    <h1 style="font-weight: bold; font-size: 30px">Instalando o BRZ Launcher</h1>
+
+    <div class="disclaimer">Recomendamos que o tutorial seja realizado no dispositivo Android em que o BRZ Launcher será
+        instalado, mas também é possível fazer tudo pelo PC e transferir os arquivos para o celular (necessário algum
+        conhecimento em ADB).
+    </div>
+
+    <br/>
+
+    <strong>Necessário:</strong>
+
+    <p>
+        1. GTA SA original para Android, faça a compra <a
+            href="https://play.google.com/store/apps/details?id=com.rockstargames.gtasa&hl=en">aqui</a>.
+    </p>
+
+    <p>
+        2. Editor de texto para Android, recomendamos <a
+            href="https://play.google.com/store/apps/details?id=ru.androidtools.texteditor&hl=en">esse aqui</a>, mas
+        qualquer um serve.
+    </p>
+
+    <p>
+        3. Gerenciador de arquivos (para instalação do APK), recomendamos <a
+            href="https://play.google.com/store/apps/details?id=com.alphainventor.filemanager&hl=en">esse aqui</a>, mas
+        qualquer um serve.
+    </p>
+
+    <strong>Passo 1:</strong>
+
+    <p>
+        Compre o GTA SA original para Android, mas <strong>não faça a instalação do jogo</strong>, se por um acaso tenha
+        feito, <strong>remova o apk</strong>.
+    </p>
+
+    <strong>Passo 2:</strong>
+
+    <p>
+        Baixe e instale o APK do BRZ Launcher através, <a href="https://cdn.brz.gg/android/brzlauncher.apk?dl=1">deste
+        link</a>. <strong>Não abra o APK</strong> após instalar.
+    </p>
+
+    <strong>Passo 3:</strong>
+
+    <p>
+        Baixe a pasta de dados para o SA-MP através <a href="https://cdn.brz.gg/android/data.zip?dl=1">deste link</a>. A
+        pasta estará em um .zip, após fazer a extração, será descompactada com o
+        nome <strong>com.rockstargames.gtasa</strong>.
+    </p>
+
+    <strong>Passo 4:</strong>
+
+    <p>
+        No seu gerenciador de arquivos, copie a pasta <strong>com.rockstargames.gtasa</strong> e cole na pasta <strong>Android
+        > data</strong>.
+    </p>
+
+    <strong>Passo 5:</strong>
+
+    <p>
+        Através do editor de texto, abra o arquivo <strong>Android > data > files > SAMP > settings.ini</strong>.
+        Modifique a linha <strong>name = Nome_Sobrenome</strong>, inserindo o seu nick no servidor, por exemplo:
+        <strong>name = Mandrakke_Army</strong>.
+    </p>
+
+    <strong>Passo 6:</strong>
+
+    <p>
+        Abra o APK do BRZ Launcher, se tudo estiver ok, na primeira vez que abrir o jogo será baixado (Cerca de 2,5GB),
+        em aberturas subsequentes, irá aparecer uma introdução e logo em seguida uma tela do Rockstar Social Club.
+        Clique na opção <strong>Offline</strong> na tela do Social Club, e quando as opções do jogo carregarem,
+        selecione a opção <strong>Multiplayer</strong>. Após isso você irá conectar no servidor do Brazuca's.
+    </p>
+
+    <strong>Crashes conhecidos:</strong>
+
+    <p>
+        - O jogo irá crashar caso você entre em um Minigame que tenha mais de 188 objetos.
+        - O jogo irá crashar em certos minigames de corrida.
+        - Entre outros.
+    </p>
+
+    <strong>Bugs conhecidos</strong>
+
+    <p>
+        - Não é possível preencher dialogs com campos de texto, por isso não é possível digitar sua senha do servidor,
+        por exemplo.
+        - As textdraws não carregam.
+        - Não há sincronização de armas, por isso jogares do PC não conseguem atirar nos jogadores do Android.
+        - Entre outros.
+    </p>
+</div>
+
+
+</body>
+</html>
