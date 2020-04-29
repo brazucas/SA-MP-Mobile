@@ -161,7 +161,8 @@ void CNetGame::Process()
 	if(GetGameState() == GAMESTATE_WAIT_CONNECT &&
 		(GetTickCount() - m_dwLastConnectAttempt) > 3000)
 	{
-		if(pChatWindow) pChatWindow->AddDebugMessage("Connecting to %s:%d...", m_szHostOrIp, m_iPort);
+//		if(pChatWindow) pChatWindow->AddDebugMessage("Connecting to %s:%d...", m_szHostOrIp, m_iPort);
+		if(pChatWindow) pChatWindow->AddDebugMessage("Conectando no servidor do Brazucas...", m_szHostOrIp, m_iPort);
 		m_pRakClient->Connect(m_szHostOrIp, m_iPort, 0, 0, 5);
 		m_dwLastConnectAttempt = GetTickCount();
 		SetGameState(GAMESTATE_CONNECTING);

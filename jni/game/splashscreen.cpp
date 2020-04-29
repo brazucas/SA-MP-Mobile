@@ -156,8 +156,8 @@ void RenderSplashScreen()
 
 	ImGui::GetOverlayDrawList()->AddText(ImVec2(0, 0), colors[color_scheme][1], 
 		"\n\t"
-		u8"Brazuca's Server\n\t"
-		u8"Sempre um passo a frente.\n\t"
+		u8"[:.:.Brazuca's Server.:.:] Sempre um passo a frente\n\t"
+		u8"https://brz.gg\n\t"
 		u8"Projeto original de Hobr / vk.com/samp.android");
 
 	ImGui::EndFrame();
