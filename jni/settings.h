@@ -4,17 +4,17 @@
 
 struct stSettings
 {
-	// 客户端
+	// client
 	char szNickName[MAX_PLAYER_NAME+1];
 	char szHost[MAX_SETTINGS_STRING+1];
 	int iPort;
 	char szPassword[MAX_SETTINGS_STRING+1];
 
-	// 调试
+	// debug
 	bool bDebug;
 	bool bOnline;
 
-	// GUI
+	// gui
 	char szFont[40];
 	float fFontSize;
 	int iFontOutline;
@@ -22,6 +22,8 @@ struct stSettings
 	float fChatPosY;
 	float fChatSizeX;
 	float fChatSizeY;
+	float fScoreBoardSizeX;
+	float fScoreBoardSizeY;
 	int iChatMaxMessages;
 	float fSpawnScreenPosX;
 	float fSpawnScreenPosY;

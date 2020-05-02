@@ -37,7 +37,7 @@ void CDebug::Render()
 		ImGui::Text("%s", str.c_str());
 	}
 
-	ImGui::SetScrollHere();
+	//ImGui::SetScrollHere();
 
 	ImGui::End();
 }

@@ -1,5 +1,27 @@
 #pragma once
 
+#pragma pack(1)
+typedef struct _CAR_MOD_INFO
+{
+	uint8_t byteCarMod0;
+	uint8_t byteCarMod1;
+	uint8_t byteCarMod2;
+	uint8_t byteCarMod3;
+	uint8_t byteCarMod4;
+	uint8_t byteCarMod5;
+	uint8_t byteCarMod6;
+	uint8_t byteCarMod7;
+	uint8_t byteCarMod8;
+	uint8_t byteCarMod9;
+	uint8_t byteCarMod10;
+	uint8_t byteCarMod11;
+	uint8_t byteCarMod12;
+	uint8_t byteCarMod13;
+	uint8_t bytePaintJob;
+	int iColor0;
+	int iColor1;
+} CAR_MOD_INFO;
+
 class CVehicle : public CEntity
 {
 public:
@@ -17,6 +39,7 @@ public:
 
 	// 0.3.7
 	void SetInvulnerable(bool bInv);
+	bool IsInvulnerable();
 	// 0.3.7
 	bool IsDriverLocalPlayer();
 	// 0.3.7
@@ -34,6 +57,10 @@ public:
 	unsigned int GetVehicleSubtype();
 
 	void SetEngineState(int iState);
+	void SetLightsState(int iState);
+
+	bool GetSirenState();
+	void SetSirenState(bool state);
 
 public:
 	VEHICLE_TYPE	*m_pVehicle;

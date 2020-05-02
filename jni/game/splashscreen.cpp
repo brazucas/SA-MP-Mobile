@@ -15,7 +15,10 @@ RwTexture *splashTexture = nullptr;
 #define COLOR_BLUE		0xFF6C2713
 #define COLOR_CYAN		0xFFCE6816
 #define COLOR_1			0xFFB58891
-#define COLOR_2			0xFF673F40
+#define COLOR_2			0xFF3291FF
+#define COLOR_3			0xFFFFC800
+#define FLIN_COLOR_ONE	0x9342F500
+#define FLIN_COLOR_TWO	0xF54266FF
 
 struct stRect
 {
@@ -38,7 +41,7 @@ uint32_t colors[MAX_SCHEMAS][2] = {
 	{ COLOR_ROSE,	COLOR_BRED },
 	{ COLOR_BLACK, 	COLOR_ORANGE },
 	{ COLOR_CYAN,	COLOR_BLUE },
-	{ COLOR_1,		COLOR_2 }
+	{ COLOR_1,		COLOR_2 },
 };
 unsigned int color_scheme = 0;
 
@@ -46,7 +49,6 @@ void LoadSplashTexture()
 {
 	Log("Loading splash texture..");
 	splashTexture = (RwTexture*)LoadTextureFromDB("samp", "mylogo");
-
 	color_scheme = 1;//rand() % MAX_SCHEMAS;
 }
 
@@ -131,7 +133,7 @@ void RenderSplash()
 	sRect.x2 = (float)newX;		// x2
 	sRect.y1 = (float)rect.y2;	// y2
 	SetScissorRect((void*)&sRect);
-	Draw(&rect, colors[color_scheme][1], splashTexture->raster, &uv);
+	Draw(&rect, COLOR_2, splashTexture->raster, &uv);
 
 	sRect.x1 = 0.0f;
 	sRect.y1 = 0.0f;
@@ -154,11 +156,10 @@ void RenderSplashScreen()
 	ImGui_ImplRenderWare_NewFrame();
 	ImGui::NewFrame();
 
-	ImGui::GetOverlayDrawList()->AddText(ImVec2(0, 0), colors[color_scheme][1], 
-		"\n\t"
-		u8"[:.:.Brazuca's Server.:.:] Sempre um passo a frente\n\t"
-		u8"https://brz.gg\n\t"
-		u8"Projeto original de Hobr / vk.com/samp.android");
+	#ifndef RELEASE_BETA
+	ImGui::GetBackgroundDrawList()->AddText(ImVec2(io.DisplaySize.x / 2.0f, (io.DisplaySize.y / 2.0f) + pGUI->ScaleY(200.0f)), IM_COL32(255, 200, 0, 255), 
+		"YOU'RE ON THE STABLE FALLBACK VERSION\t");
+	#endif
 
 	ImGui::EndFrame();
 	ImGui::Render();

@@ -4,6 +4,29 @@
 
 char* PLAYERS_REALLOC = nullptr;
 
+void ApplyFPSPatch(uint8_t fps)
+{
+	char fpsch[15];
+	sprintf(fpsch, "\\x%x", fps);
+	WriteMemory(g_libGTASA+0x463FE8, (uintptr_t)fpsch, 1);
+	WriteMemory(g_libGTASA+0x56C1F6, (uintptr_t)fpsch, 1);
+	WriteMemory(g_libGTASA+0x56C126, (uintptr_t)fpsch, 1);
+	WriteMemory(g_libGTASA+0x95B074, (uintptr_t)fpsch, 1);
+}
+
+
+void ApplyCrashFixPatches()
+{
+	// reallocate CPools::ms_pEntryInfoNodePool
+	WriteMemory(g_libGTASA + 0x003AF27A, (uintptr_t)"\x4f\xf4\x20\x40", 4); // MOV.W	R0, #0xA000 | size = 0x14
+	WriteMemory(g_libGTASA + 0x003AF284, (uintptr_t)"\x4f\xf4\x90\x50", 4); // MOV.W R0, #0x1200
+	WriteMemory(g_libGTASA + 0x003AF28C, (uintptr_t)"\x4f\xf4\x90\x52", 4); // MOV.W R2, #0x1200
+	WriteMemory(g_libGTASA + 0x003AF2BA, (uintptr_t)"\xb3\xf5\x90\x5f", 4); // CMP.W R3, #0x1200
+	
+	// reallocate CPools::ms_pPtrNodeDoubleLinkPool
+	WriteMemory(g_libGTASA + 0x003AF21C, (uintptr_t)"\x4F\xF4\x00\x30", 4); // MOV.W R0, #0x20000
+}
+
 void ApplyPatches_level0()
 {
 	// reallocate CWorld::Players[]
@@ -15,11 +38,34 @@ void ApplyPatches_level0()
 
 	// CdStreamInit(6);
 	WriteMemory(g_libGTASA+0x3981EC, (uintptr_t)"\x06\x20", 2);
+
+	// Apply crash fix patches
+	#ifdef RELEASE_BETA
+	ApplyCrashFixPatches();
+	#endif
 }
+
+struct _ATOMIC_MODEL
+{
+	uintptr_t func_tbl;
+	char data[56];
+};
+struct _ATOMIC_MODEL *ATOMIC_MODELS;
 
 void ApplyPatches()
 {
 	Log("Installing patches..");
+
+	ApplyFPSPatch(60); // default 60fps
+	// allocate Atomic models pool
+	ATOMIC_MODELS = new _ATOMIC_MODEL[20000];
+	for (int i = 0; i < 20000; i++) 
+	{
+		// CBaseModelInfo::CBaseModelInfo
+		((void(*)(_ATOMIC_MODEL*))(g_libGTASA + 0x33559C + 1))(&ATOMIC_MODELS[i]);
+		ATOMIC_MODELS[i].func_tbl = g_libGTASA + 0x5C6C68;
+		memset(ATOMIC_MODELS[i].data, 0, sizeof(ATOMIC_MODELS->data));
+	}
 
 	// CAudioEngine::StartLoadingTune
 	NOP(g_libGTASA+0x56C150, 2);
@@ -41,45 +87,6 @@ void ApplyPatches()
 	// nop calling CRealTimeShadowManager::ReturnRealTimeShadow from ~CPhysical
 	NOP(g_libGTASA+0x3A019C, 2);
 
- 	// CPed pool (old: 140, new: 210)
- 	/* 	MOVW R0, #0x5EC8
- 		MOVT R0, #6 */
- 	WriteMemory(g_libGTASA+0x3AF2D0, (uintptr_t)"\x45\xF6\xC8\x60\xC0\xF2\x06\x00", 8); // MOV  R0, #0x65EC8 | size=0x7C4 (old: 0x43F30)
- 	WriteMemory(g_libGTASA+0x3AF2DE, (uintptr_t)"\xD2\x20", 2); // MOVS R0, #0xD2
- 	WriteMemory(g_libGTASA+0x3AF2E4, (uintptr_t)"\xD2\x22", 2); // MOVS R2, #0xD2
- 	WriteMemory(g_libGTASA+0x3AF310, (uintptr_t)"\xD2\x2B", 2); // CMP  R3, #0xD2
-
- 	// CPedIntelligence pool (old: 140, new: 210)
-	// movw r0, #0x20B0
- 	// movt r0, #2
- 	// nop
- 	WriteMemory(g_libGTASA+0x3AF7E6, (uintptr_t)"\x42\xF2\xB0\x00\xC0\xF2\x02\x00\x00\x46", 10); // MOVS R0, #0x220B0 | size=0x298 (old: 0x16B20)
- 	WriteMemory(g_libGTASA+0x3AF7F6, (uintptr_t)"\xD2\x20", 2); // MOVS R0, #0xD2
- 	WriteMemory(g_libGTASA+0x3AF7FC, (uintptr_t)"\xD2\x22", 2); // MOVS R2, #0xD2
- 	WriteMemory(g_libGTASA+0x3AF824, (uintptr_t)"\xD2\x2B", 2); // CMP  R3, 0xD2
-
- 	// Task pool (old: 500, new: 1524 (1536))
- 	WriteMemory(g_libGTASA+0x3AF4EA, (uintptr_t)"\x4F\xF4\x40\x30", 4); // MOV.W R0, #30000 | size = 0x80 (old: 0xFA00)
- 	WriteMemory(g_libGTASA+0x3AF4F4, (uintptr_t)"\x4F\xF4\xC0\x60", 4); // MOV.W R0, #0x600
- 	WriteMemory(g_libGTASA+0x3AF4FC, (uintptr_t)"\x4F\xF4\xC0\x62", 4); // MOV.W R2, #0x600
- 	WriteMemory(g_libGTASA+0x3AF52A, (uintptr_t)"\xB3\xF5\xC0\x6F", 4); // CMP.W R3, #0x600
-
- 	// Event pool (old: 200, new: 512)
- 	
-
- 	// ColModel pool (old:10150, new: 32511)
- 	// mov r0, #0xCFD0
- 	// movt r0, #0x17
- 	WriteMemory(g_libGTASA+0x3AF48E, (uintptr_t)"\x4C\xF6\xD0\x70\xC0\xF2\x17\x00", 8); // MOV R0, #0x17CFD0 | size=0x30 (old: 0x76F20)
- 	WriteMemory(g_libGTASA+0x3AF49C, (uintptr_t)"\x47\xF6\xFF\x60", 4); // MOVW R0, #0x7EFF
- 	WriteMemory(g_libGTASA+0x3AF4A4, (uintptr_t)"\x47\xF6\xFF\x62", 4); // MOVW R2, #0x7EFF
-
- 	// VehicleStruct increase (0x32C*0x50 = 0xFDC0)
-    WriteMemory(g_libGTASA+0x405338, (uintptr_t)"\x4F\xF6\xC0\x50", 4);	// MOV  R0, #0xFDC0
-    WriteMemory(g_libGTASA+0x405342, (uintptr_t)"\x50\x20", 2);			// MOVS R0, #0x50
-    WriteMemory(g_libGTASA+0x405348, (uintptr_t)"\x50\x22", 2);			// MOVS R2, #0x50
-    WriteMemory(g_libGTASA+0x405374, (uintptr_t)"\x50\x2B", 2);			// CMP  R3, #0x50
-
     // Increase matrix count in CPlaceable::InitMatrixArray 
  	WriteMemory(g_libGTASA+0x3ABB0A, (uintptr_t)"\x4F\xF4\x7A\x61", 4); // MOV.W R1, #4000
 }
@@ -88,7 +95,7 @@ void ApplyInGamePatches()
 {
 	Log("Installing patches (ingame)..");
 
-	/* Разблокировка карты */
+	/* пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ */
 	// CTheZones::ZonesVisited[100]
 	memset((void*)(g_libGTASA+0x8EA7B0), 1, 100);
 	// CTheZones::ZonesRevealed
@@ -105,10 +112,10 @@ void ApplyInGamePatches()
 	UnFuck(g_libGTASA+0x398A34);
 	NOP(g_libGTASA+0x398A34, 2);
 
-	// множитель для MaxHealth
+	// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ MaxHealth
 	UnFuck(g_libGTASA+0x3BAC68);
 	*(float*)(g_libGTASA+0x3BAC68) = 176.0f;
-	// множитель для Armour
+	// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ Armour
 	UnFuck(g_libGTASA+0x27D884);
 	*(float*)(g_libGTASA+0x27D884) = 176.0;
 
@@ -116,13 +123,13 @@ void ApplyInGamePatches()
 	UnFuck(g_libGTASA+0x2C2C22);
 	NOP(g_libGTASA+0x2C2C22, 4);
 
-	// ПОТРАЧЕНО
+	// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 	WriteMemory(g_libGTASA+0x3D62FC, (uintptr_t)"\xF7\x46", 2);
 
 	// CPlayerPed::CPlayerPed task fix
 	WriteMemory(g_libGTASA+0x458ED1, (uintptr_t)"\xE0", 1);
 
-	// ReapplyPlayerAnimation (хз зачем)
+	// ReapplyPlayerAnimation (пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ)
 	NOP(g_libGTASA+0x45477E, 5);
 
 	// radar draw blips
@@ -141,7 +148,7 @@ void ApplyInGamePatches()
     // CPed::RemoveWeaponWhenEnteringVehicle (GetPlayerInfoForThisPlayerPed)
     UnFuck(g_libGTASA+0x434D94);
     NOP(g_libGTASA+0x434D94, 6);
-
+	
     // CBike::ProcessAI
     UnFuck(g_libGTASA+0x4EE200);
     *(uint8_t*)(g_libGTASA+0x4EE200) = 0x9B;

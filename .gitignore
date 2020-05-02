@@ -3,3 +3,5 @@
 *.jks.old
 *.apk
 obj
+/libs
+/obj

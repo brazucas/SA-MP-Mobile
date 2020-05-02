@@ -88,6 +88,7 @@ void InitPlayerPedPtrRecords()
 
 void SetPlayerPedPtrRecord(uint8_t bytePlayer, uintptr_t dwPedPtr)
 {
+	if(bytePlayer >= PLAYER_PED_SLOTS) return;
 	dwPlayerPedPtrs[bytePlayer] = dwPedPtr;
 }
 
@@ -101,6 +102,15 @@ uint8_t FindPlayerNumFromPedPtr(uintptr_t dwPedPtr)
 	}
 
 	return 0;
+}
+
+bool IsPointInRect(float x, float y, RECT* rect)
+{
+	if (x >= rect->fLeft && x <= rect->fRight &&
+		y >= rect->fBottom && y <= rect->fTop)
+		return true;
+
+	return false;
 }
 
 uintptr_t GetTexture(const char* texture)
@@ -138,6 +148,7 @@ void DefinedState2d()
 
 void SetScissorRect(void* pRect)
 {
+	return ((void(*)(void*))(g_libGTASA+0x273E8C+1))(pRect);
 }
 
 float DegToRad(float fDegrees)
@@ -153,4 +164,40 @@ float FloatOffset(float f1, float f2)
 {   
     if(f1 >= f2) return f1 - f2;
     else return (f2 - f1);
+}
+
+void ProjectMatrix(VECTOR* vecOut, MATRIX4X4* mat, VECTOR *vecPos)
+{
+	vecOut->X = mat->at.X * vecPos->Z + mat->up.X * vecPos->Y + mat->right.X * vecPos->X + mat->pos.X;
+	vecOut->Y = mat->at.Y * vecPos->Z + mat->up.Y * vecPos->Y + mat->right.Y * vecPos->X + mat->pos.Y;
+	vecOut->Z = mat->at.Z * vecPos->Z + mat->up.Z * vecPos->Y + mat->right.Z * vecPos->X + mat->pos.Z;
+}
+
+void RwMatrixRotate(MATRIX4X4 *mat, int axis, float angle)
+{
+	static float matt[3][3] = 
+	{
+		{ 1.0f, 0.0f, 0.0f },
+		{ 0.0f, 1.0f, 0.0f },
+		{ 0.0f, 0.0f, 1.0f }
+	};
+
+	(( void (*)(MATRIX4X4*, float*, float, int))(g_libGTASA+0x1B9118+1))(mat, matt[axis], angle, 1);
+}
+
+void RwMatrixScale(MATRIX4X4 *matrix, VECTOR *vecScale)
+{
+	matrix->right.X *= vecScale->X;
+	matrix->right.Y *= vecScale->X;
+	matrix->right.Z *= vecScale->X;
+
+	matrix->up.X *= vecScale->Y;
+	matrix->up.Y *= vecScale->Y;
+	matrix->up.Z *= vecScale->Y;
+
+	matrix->at.X *= vecScale->Z;
+	matrix->at.Y *= vecScale->Z;
+	matrix->at.Z *= vecScale->Z;
+
+	matrix->flags &= 0xFFFDFFFC;
 }

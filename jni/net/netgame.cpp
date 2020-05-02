@@ -4,13 +4,34 @@
 
 #include "chatwindow.h"
 #include "spawnscreen.h"
+#include "scoreboard.h"
+
+#include "game/cheats.h"
+#include "consolegui.h"
+#include "button.h"
+
+#include "../str_obfuscator_no_template.hpp"
 
 #define NETGAME_VERSION 4057
-#define AUTH_BS "15121F6F18550C00AC4B4F8A167D0379BB0ACA99043"
+#define AUTH_BS ""
+
+#ifdef RELEASE_BETA
+	#define RELEASE_VERSION		"Beta"
+#else
+	#define RELEASE_VERSION		"Stable"
+#endif
+
+//const auto enctyptedAuthKey = cryptor::create("10EF38095514DBF164C8FD10438A3C9BCB4DA4A9E15", 64);
+const auto encAuthKey = cryptor::create("E02262CF28BC542486C558D4BE9EFB716592AFAF8B", 42);
 
 extern CGame *pGame;
 extern CSpawnScreen *pSpawnScreen;
 extern CChatWindow *pChatWindow;
+extern CScoreBoard *pScoreBoard;
+extern CConsoleGUI *pConsoleGUI;
+extern CButton *pButton;
+
+
 
 int iVehiclePoolProcessFlag = 0;
 int iPickupPoolProcessFlag = 0;
@@ -38,12 +59,17 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char* szPlayerName, 
 
 	m_pPlayerPool = new CPlayerPool();
 	m_pPlayerPool->SetLocalPlayerName(szPlayerName);
+
 	
 	m_pVehiclePool = new CVehiclePool();
 	m_pObjectPool = new CObjectPool();
 	m_pPickupPool = new CPickupPool();
 	m_pGangZonePool = new CGangZonePool();
 	m_pLabelPool = new CText3DLabelsPool();
+	m_pTextDrawPool = new CTextDrawPool();
+
+
+	///////////////////////////////////////////////////
 
 	m_pRakClient = RakNetworkFactory::GetRakClientInterface();
 	RegisterRPCs(m_pRakClient);
@@ -66,6 +92,7 @@ CNetGame::CNetGame(const char* szHostOrIp, int iPort, const char* szPlayerName, 
 	m_bInstagib = false;
 	m_iDeathDropMoney = 0;
 	m_bNameTagLOS = false;
+	m_bHeadMove = false;
 
 	for(int i=0; i<100; i++)
 		m_dwMapIcons[i] = 0;
@@ -111,6 +138,13 @@ CNetGame::~CNetGame()
 		delete m_pLabelPool;
 		m_pLabelPool = nullptr;
 	}
+
+
+	if(m_pTextDrawPool)
+	{
+		delete m_pTextDrawPool;
+		m_pTextDrawPool = nullptr;
+	}
 }
 
 void CNetGame::Process()
@@ -119,6 +153,8 @@ void CNetGame::Process()
 
 	if(m_bHoldTime)
 		pGame->SetWorldTime(m_byteWorldTime, m_byteWorldMinute);
+
+
 
 	if(GetGameState() == GAMESTATE_CONNECTED)
 	{
@@ -138,6 +174,9 @@ void CNetGame::Process()
 		}
 		else
 			++iPickupPoolProcessFlag;
+
+		if(m_pObjectPool) m_pObjectPool->Process();
+
 	}
 	else
 	{
@@ -151,8 +190,9 @@ void CNetGame::Process()
 			else
 				pPlayer->TeleportTo(1093.4f, -2036.5f, 82.7106f);
 
-			pCamera->SetPosition(1093.0f, -2036.0f, 90.0f, 0.0f, 0.0f, 0.0f);
-			pCamera->LookAtPoint(384.0f, -1557.0f, 20.0f, 2);
+			pCamera->SetPosition(-2639.0f,1160.0f, 166.0f, 0.0f, 0.0f, 0.0f);
+			pCamera->LookAtPoint(-1822.0f, 772.0f, 137.0f, 2);
+			
 			pGame->SetWorldWeather(m_byteWeather);
 			pGame->DisplayWidgets(false);
 		}
@@ -216,7 +256,7 @@ void CNetGame::UpdateNetwork()
 			break;
 
 			case ID_INVALID_PASSWORD:
-			pChatWindow->AddDebugMessage("Senha do servidor incorreta.");
+			pChatWindow->AddDebugMessage("Wrong server password.");
 			m_pRakClient->Disconnect(0);
 			break;
 
@@ -234,6 +274,14 @@ void CNetGame::UpdateNetwork()
 
 			case ID_MARKERS_SYNC:
 			Packet_MarkersSync(pkt);
+			break;
+
+			case ID_AIM_SYNC:
+			Packet_AimSync(pkt);
+			break;
+
+			case ID_BULLET_SYNC:
+			Packet_BulletSync(pkt);
 			break;
 		}
 
@@ -315,9 +363,14 @@ void CNetGame::ShutDownForGameRestart()
 	ResetPickupPool();
 	ResetGangZonePool();
 	ResetLabelPool();
+	//
+	if(m_pTextDrawPool)
+		delete m_pTextDrawPool;
+	m_pTextDrawPool = new CTextDrawPool();
+	//
 
 	m_bDisableEnterExits = false;
-	m_fNameTagDrawDistance = 60.0f;
+	m_fNameTagDrawDistance = 50.0f;
 	m_byteWorldTime = 12;
 	m_byteWorldMinute = 0;
 	m_byteWeather = 1;
@@ -359,9 +412,129 @@ void CNetGame::SendChatMessage(const char* szMsg)
 	m_pRakClient->RPC(&RPC_Chat,&bsSend,HIGH_PRIORITY,RELIABLE,0,false, UNASSIGNED_NETWORK_ID, NULL);
 }
 
+void ApplyFPSPatch(uint8_t);
+
 void CNetGame::SendChatCommand(const char* szCommand)
 {
 	if (GetGameState() != GAMESTATE_CONNECTED) return;
+
+	if(strcmp(szCommand, "/q") == 0 || strcmp(szCommand, "/quit") == 0)
+	{
+		std::terminate();
+		return;
+	}
+	else if(strcmp(szCommand, "/reconnect") == 0)
+	{
+		if(GetGameState() == GAMESTATE_CONNECTED)
+		{
+			ShutDownForGameRestart();
+		}
+		else
+		{
+			//pNetGame->ShutDownForGameRestart();
+			SetGameState(GAMESTATE_WAIT_CONNECT);
+		}
+		return;
+	}
+	else if(strcmp(szCommand, "/label") == 0)
+	{
+		if(GetLabelPool())
+		{
+			GetLabelPool()->UpdateFlag();
+		}
+	}
+	else if(strcmp(szCommand, "/scoreboard") == 0)
+	{
+		pScoreBoard->Toggle();
+		return;
+	}
+
+
+	/*else if(strcmp(szCommand, "/bonepos") == 0)
+	{
+		if(pGame)
+		{
+			VECTOR vecOut, vecRot;
+			pGame->GetBonePosition(vecOut, BONE_HEAD, true);
+			CObject *pObject = new CObject(2901, vecOut.X, vecOut.Y, vecOut.Z, vecRot, 300.0f);		
+
+			CLocalPlayer* pPlayer = m_pPlayerPool->GetLocalPlayer();
+
+			MATRIX4X4 mat;
+			VECTOR offs;
+			pPlayer->GetPlayerPed()->GetMatrix(&mat);
+
+			offs.X = FloatOffset(mat.pos.X, vecOut.X) + 2.0f;
+			offs.Y = FloatOffset(mat.pos.Y, vecOut.Y);
+			offs.Z = FloatOffset(mat.pos.Z, vecOut.Z);
+
+			ScriptCommand( &attach_object_to_actor, pObject->m_dwGTAId, pPlayer->GetPlayerPed()->m_dwGTAId,
+				offs.X,
+				offs.Y,
+				offs.Z, 
+				0.0f,
+				0.0f,
+				0.0f);
+		}
+		return;
+	}*/
+	else if(strcmp(szCommand, "/screen") == 0)
+	{
+		pChatWindow->AddDebugMessage("Screen Resolution: %dx%d", pGame->GetScreenWidth(), pGame->GetScreenHeight());
+		return;
+	}
+	// doesn't work so you know
+	else if(strcmp(szCommand, "/setres") == 0)
+	{
+		// OS_ScreenSetResolution
+		// Set screen resolution to 1920x1080
+		((void(*)(unsigned int, unsigned int))(g_libGTASA+0x23819C+1))(1920, 1080);
+		pChatWindow->AddDebugMessage("Screen Resolution changed to 1920x1080");
+		return;
+	}
+	else if(strcmp(szCommand, "/memstat") == 0)
+	{
+		int available_memory, total_memory;
+
+		// don't worry about passing zeros this function have checks o_o (i hope)
+		((int(*)(int*,int*,int*))(g_libGTASA+0x243868+1))(&available_memory, &total_memory, 0);
+
+		// this thing shows 252
+		// what is this? 252 bits? bytes? megabytes? wtf?
+		pChatWindow->AddDebugMessage("Available memory: %d | Total memory: %d", available_memory, total_memory);
+	}
+	else if(strcmp(szCommand, "/deviceinfo") == 0)
+	{
+		// I guess this thing shows do you have touch screen or not
+		int touchscreen_status = ((int(*)(int))(g_libGTASA+0x243204+1))(1);
+		pChatWindow->AddDebugMessage("Touch screen status: %d", touchscreen_status);
+	}
+	else if(strcmp(szCommand, "/deviceregion") == 0)
+	{
+		// useless stuff currently.
+	}
+	else if(strcmp(szCommand, "/button") == 0)
+	{
+		pButton->Toggle();
+	}
+	else if(strcmp(szCommand, "/siren") == 0)
+	{
+		CLocalPlayer *pLocalPlayer = m_pPlayerPool->GetLocalPlayer();
+		if(IN_VEHICLE(pLocalPlayer->GetPlayerPed()->m_pPed))
+		{
+			int vehid = m_pVehiclePool->FindIDFromGtaPtr((VEHICLE_TYPE*)pLocalPlayer->GetPlayerPed()->m_pPed->pVehicle);
+			if(m_pVehiclePool->GetSlotState(vehid))
+			{
+				CVehicle *veh = m_pVehiclePool->GetAt(vehid);
+				pChatWindow->AddDebugMessage("Siren or Alarm state: %d", veh->GetSirenState());
+			}
+		}
+	}
+	else if(strcmp(szCommand, "/headmove") == 0)
+	{
+		m_bHeadMove = !m_bHeadMove;
+		pChatWindow->AddInfoMessage(m_bHeadMove ? "-> Head movements enabled" : "-> Head movements disabled");
+	}
 
 	RakNet::BitStream bsParams;
 	int iStrlen = strlen(szCommand);
@@ -386,10 +559,10 @@ void CNetGame::SendDialogResponse(uint16_t wDialogID, uint8_t byteButtonID, uint
 
 void CNetGame::SetMapIcon(uint8_t byteIndex, float fX, float fY, float fZ, uint8_t byteIcon, int iColor, int style)
 {
-	if(byteIndex >= 100) return;
+	/*if(byteIndex >= 100) return;
 	if(m_dwMapIcons[byteIndex]) DisableMapIcon(byteIndex);
 
-	m_dwMapIcons[byteIndex] = pGame->CreateRadarMarkerIcon(byteIcon, fX, fY, fZ, iColor, style);
+	m_dwMapIcons[byteIndex] = pGame->CreateRadarMarkerIcon(byteIcon, fX, fY, fZ, iColor, style);*/
 }
 
 void CNetGame::DisableMapIcon(uint8_t byteIndex)
@@ -451,6 +624,85 @@ void CNetGame::Packet_ConnectionLost(Packet* pkt)
 	SetGameState(GAMESTATE_WAIT_CONNECT);
 }
 
+void BIG_NUM_MUL(unsigned long in[5], unsigned long out[6], unsigned long factor)
+{
+	/*
+		Based on TTMath library by Tomasz Sowa.
+	*/
+
+	unsigned long src[5] = {0};
+	for (int i = 0; i < 5; i++)
+		src[i] = ((in[4-i]>>24) | ((in[4-i]<<8) & 0x00FF0000) | ((in[4-i]>>8) & 0x0000FF00) | (in[4-i]<<24));
+
+	unsigned long long tmp = 0;
+
+	tmp = (unsigned long long)(src[0])*(unsigned long long)(factor);
+	out[0] = tmp&0xFFFFFFFF;
+	out[1] = tmp>>32;
+	tmp = (unsigned long long)(src[1])*(unsigned long long)(factor) + (unsigned long long)(out[1]);
+	out[1] = tmp&0xFFFFFFFF;
+	out[2] = tmp>>32;
+	tmp = (unsigned long long)(src[2])*(unsigned long long)(factor) + (unsigned long long)(out[2]);
+	out[2] = tmp&0xFFFFFFFF;
+	out[3] = tmp>>32;
+	tmp = (unsigned long long)(src[3])*(unsigned long long)(factor) + (unsigned long long)(out[3]);
+	out[3] = tmp&0xFFFFFFFF;
+	out[4] = tmp>>32;
+	tmp = (unsigned long long)(src[4])*(unsigned long long)(factor) + (unsigned long long)(out[4]);
+	out[4] = tmp&0xFFFFFFFF;
+	out[5] = tmp>>32;
+
+	for (int i = 0; i < 12; i++)
+	{
+		unsigned char temp = ((unsigned char*)out)[i];
+		((unsigned char*)out)[i] = ((unsigned char*)out)[23 - i];
+		((unsigned char*)out)[23 - i] = temp;
+	}
+}
+
+int gen_gpci(char buf[64], unsigned long factor) /* by bartekdvd */
+{
+	unsigned char out[6*4] = {0};
+
+	static const char alphanum[] =
+		"0123456789"
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+	for (int i = 0; i < 6*4; ++i)
+		out[i] = alphanum[rand() % (sizeof(alphanum) - 1)];
+
+	out[6*4] = 0;
+
+	BIG_NUM_MUL((unsigned long*)out, (unsigned long*)out, factor);
+
+	unsigned int notzero = 0;
+	buf[0] = '0'; buf[1] = '\0';
+
+	if (factor == 0) return 1;
+
+	int pos = 0;
+	for (int i = 0; i < 24; i++)
+	{
+		unsigned char tmp = out[i] >> 4;
+		unsigned char tmp2 = out[i]&0x0F;
+		
+		if (notzero || tmp)
+		{
+			buf[pos++] = (char)((tmp > 9)?(tmp + 55):(tmp + 48));
+			if (!notzero) notzero = 1;
+		}
+
+		if (notzero || tmp2)
+		{
+			buf[pos++] = (char)((tmp2 > 9)?(tmp2 + 55):(tmp2 + 48));
+			if (!notzero) notzero = 1;
+		}
+	}
+	buf[pos] = 0;
+
+	return pos;
+}
+
 void CNetGame::Packet_ConnectionSucceeded(Packet* pkt)
 {
 	if(pChatWindow)
@@ -472,8 +724,10 @@ void CNetGame::Packet_ConnectionSucceeded(Packet* pkt)
 	int iVersion = NETGAME_VERSION;
 	char byteMod = 0x01;
 	unsigned int uiClientChallengeResponse = uiChallenge ^ iVersion;
+	
+	char byteAuthBSLen;
+	byteAuthBSLen = (char)strlen(encAuthKey.decrypt());
 
-	char byteAuthBSLen = (char)strlen(AUTH_BS);
 	char byteNameLen = (char)strlen(m_pPlayerPool->GetLocalPlayerName());
 	char byteClientverLen = (char)strlen(SAMP_VERSION);
 
@@ -484,7 +738,7 @@ void CNetGame::Packet_ConnectionSucceeded(Packet* pkt)
 	bsSend.Write(m_pPlayerPool->GetLocalPlayerName(), byteNameLen);
 	bsSend.Write(uiClientChallengeResponse);
 	bsSend.Write(byteAuthBSLen);
-	bsSend.Write(AUTH_BS, byteAuthBSLen);
+	bsSend.Write(encAuthKey.decrypt(), byteAuthBSLen);
 	bsSend.Write(byteClientverLen);
 	bsSend.Write(SAMP_VERSION, byteClientverLen);
 	m_pRakClient->RPC(&RPC_ClientJoin, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, NULL);
@@ -728,4 +982,63 @@ void CNetGame::Packet_MarkersSync(Packet *pkt)
 			}
 		}
 	}
+}
+
+void CNetGame::Packet_BulletSync(Packet* p)
+{
+	CRemotePlayer* pPlayer;
+	RakNet::BitStream bsBulletSync((unsigned char*)p->data, p->length, false);
+
+	if (GetGameState() != GAMESTATE_CONNECTED) return;
+
+	
+	uint8_t bytePacketID = 0;
+	PLAYERID bytePlayerID;
+	BULLET_SYNC blSync;
+	
+	bsBulletSync.Read(bytePacketID);
+	bsBulletSync.Read(bytePlayerID);
+	bsBulletSync.Read((char*)& blSync, sizeof(BULLET_SYNC));
+	
+	pPlayer = GetPlayerPool()->GetAt(bytePlayerID);
+	
+	if (pPlayer && m_pPlayerPool->GetLocalPlayerID() != bytePlayerID)
+		pPlayer->StoreBulletSyncData(&blSync);
+}
+
+void CNetGame::Packet_AimSync(Packet * p)
+{
+	CRemotePlayer * pPlayer;
+	RakNet::BitStream bsAimSync((unsigned char*)p->data, p->length, false);
+	AIM_SYNC_DATA aimSync;
+	uint8_t bytePacketID = 0;
+	uint16_t bytePlayerID = 0;
+
+	if (GetGameState() != GAMESTATE_CONNECTED) return;
+
+	bsAimSync.Read(bytePacketID);
+	bsAimSync.Read(bytePlayerID);
+	bsAimSync.Read((char*)&aimSync, sizeof(AIM_SYNC_DATA));
+
+	pPlayer = GetPlayerPool()->GetAt(bytePlayerID);
+
+	if (pPlayer)  {
+		pPlayer->UpdateAimFromSyncData(&aimSync);
+	}
+}
+
+void CNetGame::UpdatePlayerScoresAndPings()
+{
+	static uint32_t dwLastUpdateTick = 0;
+
+	if((GetTickCount() - dwLastUpdateTick) >= 3000){
+		dwLastUpdateTick = GetTickCount();
+		RakNet::BitStream bsParams;
+		m_pRakClient->RPC(&RPC_UpdateScoresPingsIPs, &bsParams, HIGH_PRIORITY,RELIABLE,0,false, UNASSIGNED_NETWORK_ID, NULL);
+	}
+}
+
+bool CNetGame::GetHeadMoveState()
+{
+	return m_bHeadMove;
 }

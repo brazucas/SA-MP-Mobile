@@ -2,14 +2,22 @@
 #include "../util/armhook.h"
 #include "RW/RenderWare.h"
 #include "game.h"
-#include "net/netgame.h"
-#include "gui/gui.h"
+#include "../net/netgame.h"
+#include "../gui/gui.h"
+#include "../chatwindow.h"
+#include "../scoreboard.h"
 
+extern CScoreBoard *pScoreBoard;
+extern CGame *pGame;
 extern CNetGame *pNetGame;
 extern CGUI *pGUI;
-
+extern CChatWindow *pChatWindow;
+extern CGame *pGame;
 // Neiae/SAMP
 bool g_bPlaySAMP = false;
+
+uint32_t testTimePrepareWeapon;
+uint32_t testTimePrepareWeaponRemote[MAX_PLAYERS];
 
 void InitSAMP();
 void InitInMenu();
@@ -35,7 +43,6 @@ stFile* (*NvFOpen)(const char*, const char*, int, int);
 stFile* NvFOpen_hook(const char* r0, const char* r1, int r2, int r3)
 {
 	char path[0xFF] = { 0 };
-
 	// ----------------------------
 	if(!strncmp(r1+12, "mainV1.scm", 10))
 	{
@@ -64,7 +71,11 @@ stFile* NvFOpen_hook(const char* r0, const char* r1, int r2, int r3)
 		Log("Loading vehicles.ide..");
 		goto open;
 	}
-
+	if(!strncmp(r1, "DATA/GTA.DAT", 12))
+	{
+		sprintf(path, "%s/SAMP/gta.dat", g_pszStorage);
+		goto open;
+	}
 orig:
 	return NvFOpen(r0, r1, r2, r3);
 
@@ -106,9 +117,9 @@ bool bGameStarted = false;
 void (*Render2dStuff)();
 void Render2dStuff_hook()
 {
+
 	bGameStarted = true;
 	MainLoop();
-
 	Render2dStuff();
 	return;
 }
@@ -263,6 +274,7 @@ void CStreaming_InitImageList_hook()
 	(( uint32_t (*)(char*, uint32_t))(g_libGTASA+0x28E7B0+1))("TEXDB\\GTA3.IMG", 1); // CStreaming::AddImageToList
 	(( uint32_t (*)(char*, uint32_t))(g_libGTASA+0x28E7B0+1))("TEXDB\\GTA_INT.IMG", 1); // CStreaming::AddImageToList
 	(( uint32_t (*)(char*, uint32_t))(g_libGTASA+0x28E7B0+1))("TEXDB\\SAMP.IMG", 1); // CStreaming::AddImageToList
+	(( uint32_t (*)(char*, uint32_t))(g_libGTASA+0x28E7B0+1))("TEXDB\\SAMPCOL.IMG", 1); // CStreaming::AddImageToList
 }
 
 /* ====================================================== */
@@ -293,6 +305,114 @@ PED_MODEL* CModelInfo_AddPedModel_hook(int id)
 	return model;
 }
 /* ====================================================== */
+void (*CPools_Initialise)(void);
+void CPools_Initialise_hook(void)
+{
+	struct PoolAllocator {
+
+		struct Pool {
+			void *objects;
+			uint8_t *flags;
+			uint32_t count;
+			uint32_t top;
+			uint32_t bInitialized;
+		};
+		static_assert(sizeof(Pool) == 0x14);
+
+		static Pool* Allocate(size_t count, size_t size) {
+			
+			Pool *p = new Pool;
+
+			p->objects = new char[size*count];
+			p->flags = new uint8_t[count];
+			p->count = count;
+			p->top = 0xFFFFFFFF;
+			p->bInitialized = 1;
+
+			for (size_t i = 0; i < count; i++) {
+				p->flags[i] |= 0x80;
+				p->flags[i] &= 0x80;
+			}
+
+			return p;
+		}
+	};
+
+	
+	// 600000 / 75000 = 8
+	static auto ms_pPtrNodeSingleLinkPool	= PoolAllocator::Allocate(100000,	8);		// 75000
+	// 72000 / 6000 = 12
+	static auto ms_pPtrNodeDoubleLinkPool	= PoolAllocator::Allocate(60000,	12);	// 6000
+	// 10000 / 500 = 20
+	static auto ms_pEntryInfoNodePool		= PoolAllocator::Allocate(40000,	20);	// 500
+	// 279440 / 140 = 1996
+	static auto ms_pPedPool					= PoolAllocator::Allocate(240,		1996);	// 140
+	// 286440 / 110 = 2604
+	static auto ms_pVehiclePool				= PoolAllocator::Allocate(2000,		2604);	// 110
+	// 840000 / 14000 = 60
+	static auto ms_pBuildingPool			= PoolAllocator::Allocate(20000,	60);	// 14000
+	// 147000 / 350 = 420
+	static auto ms_pObjectPool				= PoolAllocator::Allocate(3000,		420);	// 350
+	// 210000 / 3500 = 60
+	static auto ms_pDummyPool				= PoolAllocator::Allocate(40000,	60);	// 3500
+	// 487200 / 10150 = 48
+	static auto ms_pColModelPool			= PoolAllocator::Allocate(50000,	48);	// 10150
+	// 64000 / 500 = 128
+	static auto ms_pTaskPool				= PoolAllocator::Allocate(5000,		128);	// 500
+	// 13600 / 200 = 68
+	static auto ms_pEventPool				= PoolAllocator::Allocate(1000,		68);	// 200
+	// 6400 / 64 = 100
+	static auto ms_pPointRoutePool			= PoolAllocator::Allocate(200,		100);	// 64
+	// 13440 / 32 = 420
+	static auto ms_pPatrolRoutePool			= PoolAllocator::Allocate(200,		420);	// 32
+	// 2304 / 64 = 36
+	static auto ms_pNodeRoutePool			= PoolAllocator::Allocate(200,		36);	// 64
+	// 512 / 16 = 32
+	static auto ms_pTaskAllocatorPool		= PoolAllocator::Allocate(3000,		32);	// 16
+	// 92960 / 140 = 664
+	static auto ms_pPedIntelligencePool		= PoolAllocator::Allocate(240,		664);	// 140
+	// 15104 / 64 = 236
+	static auto ms_pPedAttractorPool		= PoolAllocator::Allocate(200,		236);	// 64
+
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93E0) = ms_pPtrNodeSingleLinkPool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93DC) = ms_pPtrNodeDoubleLinkPool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93D8) = ms_pEntryInfoNodePool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93D4) = ms_pPedPool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93D0) = ms_pVehiclePool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93CC) = ms_pBuildingPool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93C8) = ms_pObjectPool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93C4) = ms_pDummyPool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93C0) = ms_pColModelPool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93BC) = ms_pTaskPool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93B8) = ms_pEventPool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93B4) = ms_pPointRoutePool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93B0) = ms_pPatrolRoutePool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93AC) = ms_pNodeRoutePool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93A8) = ms_pTaskAllocatorPool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93A4) = ms_pPedIntelligencePool;
+	*(PoolAllocator::Pool**)(g_libGTASA + 0x8B93A0) = ms_pPedAttractorPool;
+}
+
+struct _ATOMIC_MODEL
+{
+	uintptr_t func_tbl;
+	char data[56];
+};
+extern struct _ATOMIC_MODEL *ATOMIC_MODELS;
+
+uintptr_t(*CModelInfo_AddAtomicModel)(int iModel);
+uintptr_t CModelInfo_AddAtomicModel_hook(int iModel)
+{
+	uint32_t iCount = *(uint32_t*)(g_libGTASA + 0x7802C4);
+	_ATOMIC_MODEL *model = &ATOMIC_MODELS[iCount];
+	*(uint32_t*)(g_libGTASA + 0x7802C4) = iCount + 1;
+
+	((void(*)(_ATOMIC_MODEL*))(*(uintptr_t*)(model->func_tbl + 0x1C)))(model);
+	_ATOMIC_MODEL **ms_modelInfoPtrs = (_ATOMIC_MODEL**)(g_libGTASA + 0x87BF48);
+	ms_modelInfoPtrs[iModel] = model;
+	return (uintptr_t)model;
+}
+/* ==== */
 
 uint32_t (*CRadar__GetRadarTraceColor)(uint32_t color, uint8_t bright, uint8_t friendly);
 uint32_t CRadar__GetRadarTraceColor_hook(uint32_t color, uint8_t bright, uint8_t friendly)
@@ -456,9 +576,373 @@ void InstallSpecialHooks()
 	SetUpHook(g_libGTASA+0x4D3864, (uintptr_t)CText_Get_hook, (uintptr_t*)&CText_Get);
 	SetUpHook(g_libGTASA+0x40C530, (uintptr_t)InitialiseRenderWare_hook, (uintptr_t*)&InitialiseRenderWare);
 }
+/// shit
+
+void onDamage(PED_TYPE* issuer, PED_TYPE* damaged)
+{
+	if (!pNetGame) return;
+	PED_TYPE *pPedPlayer = GamePool_FindPlayerPed();
+	if(damaged && (pPedPlayer == issuer))
+	{
+		if (pNetGame->GetPlayerPool()->FindRemotePlayerIDFromGtaPtr((PED_TYPE*)damaged) != INVALID_PLAYER_ID)
+		{
+			CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
+			CAMERA_AIM* caAim = pPlayerPool->GetLocalPlayer()->GetPlayerPed()->GetCurrentAim();
+			
+			VECTOR aim;
+			aim.X = caAim->f1x;
+			aim.Y = caAim->f1y;
+			aim.Z = caAim->f1z;
+
+			pPlayerPool->GetLocalPlayer()->SendBulletSyncData(pPlayerPool->FindRemotePlayerIDFromGtaPtr((PED_TYPE*)damaged), BULLET_HIT_TYPE_PLAYER, aim);
+		}
+	}
+}
+
+uintptr_t (*ComputeDamageResponse)(uintptr_t, uintptr_t, int, int);
+uintptr_t ComputeDamageResponse_hook(uintptr_t issuer, uintptr_t ped, int a3, int a4)
+{
+	if(issuer && ped) onDamage((PED_TYPE*)*(uintptr_t*)issuer, (PED_TYPE*)ped);
+	return ComputeDamageResponse(issuer, ped, a3, a4);
+}
+
+int (*CWeapon__Fire)(uintptr_t thiz, uintptr_t a2, uintptr_t a3, uintptr_t a4, uintptr_t a5, uintptr_t a6, uintptr_t a7);
+int CWeapon__Fire_hook(uintptr_t thiz, uintptr_t a2, uintptr_t a3, uintptr_t a4, uintptr_t a5, uintptr_t a6, uintptr_t a7)
+{
+	if(!pNetGame) return CWeapon__Fire(thiz, a2, a3, a4, a5, a6, a7);
+	PED_TYPE *pPedPlayer = GamePool_FindPlayerPed();
+	if(pPedPlayer == (PED_TYPE*)a2) // THIS IS THE LOCAL PLAYER
+	{
+		// Get the hit pos vec 
+		CAMERA_AIM* caAim = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed()->GetCurrentAim();
+		
+		VECTOR aim;
+		aim.X = caAim->f1x;
+		aim.Y = caAim->f1y;
+		aim.Z = caAim->f1z;
+
+		//pNetGame->GetPlayerPool()->GetLocalPlayer()->SendBulletSyncData(0xFFFF, 0, aim);
+	}
+
+	/*if(pChatWindow)
+	{
+		pChatWindow->AddDebugMessage("local: 0x%X, processing: 0x%X", (uintptr_t)pPedPlayer, a2);
+		pChatWindow->AddDebugMessage("useless shit 1: %d, useless shit 2: %d, useless shit 3: %d", *((uintptr_t*)thiz + 1), *((uintptr_t*)thiz + 2), *((uintptr_t*)thiz));
+	}*/
+
+	return CWeapon__Fire(thiz, a2, a3, a4, a5, a6, a7);
+}
+
+uint16_t (*CHud_DrawVitalStats)(uintptr_t thiz);
+uint16_t CHud_DrawVitalStats_hook(uintptr_t thiz)
+{
+	if(pScoreBoard)
+		pScoreBoard->Toggle();
+	return 0;
+}
+
+uint32_t (*CWeapon__DoBulletImpact)(uintptr_t thiz, ENTITY_TYPE* pFiringEntity, ENTITY_TYPE *pCollideEntity, VECTOR *vecStart, VECTOR *vecEnd, void *pColPoint, int vecAhead);
+uint32_t CWeapon__DoBulletImpact_hook(uintptr_t thiz, ENTITY_TYPE* pFiringEntity, ENTITY_TYPE *pCollideEntity, VECTOR *vecStart, VECTOR *vecEnd, void *pColPoint, int vecAhead)
+{
+	if(pNetGame && pNetGame->GetTextDrawPool())
+	{
+		CObjectPool* pObjectPool = pNetGame->GetObjectPool();
+		uint16_t objID = pObjectPool->FindIDFromGtaPtr(pCollideEntity);
+		if(objID != INVALID_OBJECT_ID)
+		{
+			if(pFiringEntity == (ENTITY_TYPE*)pGame->FindPlayerPed()->m_pEntity)
+			{
+				CAMERA_AIM* caAim = pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed()->GetCurrentAim();
+				VECTOR aim;
+				aim.X = caAim->f1x;
+				aim.Y = caAim->f1y;
+				aim.Z = caAim->f1z;
+
+				pNetGame->GetPlayerPool()->GetLocalPlayer()->SendBulletSyncData(objID, 3, aim);
+			}
+		}
+
+	}
+	return CWeapon__DoBulletImpact(thiz, pFiringEntity, pCollideEntity, vecStart, vecEnd, pColPoint, vecAhead);
+}
+
+int (*CUpsideDownCarCheck__IsCarUpsideDown)(int thiz, uintptr_t a2);
+int CUpsideDownCarCheck__IsCarUpsideDown_hook(int thiz, uintptr_t a2)
+{
+	if(*(uintptr_t*)(a2 + 20))
+	{
+		return CUpsideDownCarCheck__IsCarUpsideDown(thiz, a2);
+	}
+	return 0;
+}
+
+int (*RwFrameAddChild)(int a1, int a2);
+int RwFrameAddChild_hook(int a1, int a2)
+{
+	uintptr_t dwRetAddr = 0;
+ 	__asm__ volatile ("mov %0, lr" : "=r" (dwRetAddr));
+ 	dwRetAddr -= g_libGTASA;
+
+	if(dwRetAddr == 0x338BD7)
+	{
+		if(a1 == 0)
+			return 0;
+	}
+
+	return RwFrameAddChild(a1, a2);
+}
+
+int (*CTaskSimpleUseGun__SetPedPosition)(uintptr_t thiz, uintptr_t a2);
+int CTaskSimpleUseGun__SetPedPosition_hook(uintptr_t thiz, uintptr_t a2)
+{
+	//if(!thiz || !a2) return CTaskSimpleUseGun__SetPedPosition(thiz, a2);
+
+	unsigned char v1 = *((unsigned char*)thiz + 13);
+	bool bChangeTheResult = false;
+	/*PED_TYPE *pPedPlayer = (PED_TYPE*)a2;
+	if(pPedPlayer != 0 && pNetGame != 0)
+	{
+		CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
+		if(pPlayerPool)
+		{
+			// LOCAL PED
+			if(pPedPlayer == GamePool_FindPlayerPed())
+			{
+				CPlayerPed *pPlayerPed = pGame->FindPlayerPed();
+				if(pPlayerPed)
+				{
+					if((pPlayerPed->GetCurrentWeapon() == 42 || pPlayerPed->GetCurrentWeapon() == 41) && pPlayerPed->GetGtaVehicle() == 0)
+					{
+						if(v1 == 0)
+						{
+							if(GetTickCount() - testTimePrepareWeapon >= 250)
+							{
+								*((unsigned char*)thiz + 13) |= 1;
+								testTimePrepareWeapon = GetTickCount();
+							}
+						}
+					}
+				}
+			}
+			// REMOTE PED
+			else
+			{
+				if(v1 == 0)
+				{
+					PLAYERID remotePlayerID = pPlayerPool->FindRemotePlayerIDFromGtaPtr(pPedPlayer);
+					if(remotePlayerID != INVALID_PLAYER_ID)
+					{
+						CRemotePlayer *pRemotePlayer = pPlayerPool->GetAt(remotePlayerID);
+						if(pRemotePlayer)
+						{
+							CPlayerPed *pPlayerPed = pRemotePlayer->GetPlayerPed();
+							if((pPlayerPed->GetCurrentWeapon() == 42 || pPlayerPed->GetCurrentWeapon() == 41) && pPlayerPed->GetGtaVehicle() == 0)
+							{
+								if(GetTickCount() - testTimePrepareWeaponRemote[remotePlayerID] >= 250)
+								{
+									*((unsigned char*)thiz + 13) |= 1;
+									testTimePrepareWeaponRemote[remotePlayerID] = GetTickCount();
+								}
+							}
+						}
+					}
+				}
+			}	
+		}
+	}*/
+
+	PED_TYPE *pPedPlayer = (PED_TYPE*)a2;
+	if(pPedPlayer != 0 && pNetGame != 0)
+	{
+		if(v1 == 0)
+		{
+			CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
+			if(pPlayerPool)
+			{
+				// LOCAL PED
+				if(pPedPlayer == GamePool_FindPlayerPed())
+				{
+					CPlayerPed *pPlayerPed = pGame->FindPlayerPed();
+					if(pPlayerPed)
+					{
+						if((pPlayerPed->GetCurrentWeapon() == 42 || pPlayerPed->GetCurrentWeapon() == 41) && pPlayerPed->GetGtaVehicle() == 0)
+						{
+							CVehiclePool *pVehiclePool = pNetGame->GetVehiclePool();
+							if(pVehiclePool)
+							{
+								for(VEHICLEID veh = 0; veh < MAX_VEHICLES; veh++)
+								{
+									if(pVehiclePool->GetSlotState(veh))
+									{
+										CVehicle *pVehicle = pVehiclePool->GetAt(veh);
+										if(pVehicle)
+										{
+											MATRIX4X4 vehMat, playerMat;
+											pVehicle->GetMatrix(&vehMat);
+											pPlayerPed->GetMatrix(&playerMat);
+
+											float fSX = (vehMat.pos.X - playerMat.pos.X) * (vehMat.pos.X - playerMat.pos.X);
+											float fSY = (vehMat.pos.Y - playerMat.pos.Y) * (vehMat.pos.Y - playerMat.pos.Y);
+											float fSZ = (vehMat.pos.Z - playerMat.pos.Z) * (vehMat.pos.Z - playerMat.pos.Z);
+
+											float fDistance = (fSX + fSY + fSZ);
+
+											if(fDistance <= 100.0f)
+												bChangeTheResult = true;
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				// REMOTE PED
+				else
+				{
+					PLAYERID remotePlayerID = pPlayerPool->FindRemotePlayerIDFromGtaPtr(pPedPlayer);
+					if(remotePlayerID != INVALID_PLAYER_ID)
+					{
+						CRemotePlayer *pRemotePlayer = pPlayerPool->GetAt(remotePlayerID);
+						if(pRemotePlayer)
+						{
+							CPlayerPed *pPlayerPed = pRemotePlayer->GetPlayerPed();
+							if((pPlayerPed->GetCurrentWeapon() == 42 || pPlayerPed->GetCurrentWeapon() == 41) && pPlayerPed->GetGtaVehicle() == 0)
+							{
+								CVehiclePool *pVehiclePool = pNetGame->GetVehiclePool();
+								if(pVehiclePool)
+								{
+									for(VEHICLEID veh = 0; veh < MAX_VEHICLES; veh++)
+									{
+										if(pVehiclePool->GetSlotState(veh))
+										{
+											CVehicle *pVehicle = pVehiclePool->GetAt(veh);
+											if(pVehicle)
+											{
+												MATRIX4X4 vehMat, playerMat;
+												pVehicle->GetMatrix(&vehMat);
+												pPlayerPed->GetMatrix(&playerMat);
+
+												float fSX = (vehMat.pos.X - playerMat.pos.X) * (vehMat.pos.X - playerMat.pos.X);
+												float fSY = (vehMat.pos.Y - playerMat.pos.Y) * (vehMat.pos.Y - playerMat.pos.Y);
+												float fSZ = (vehMat.pos.Z - playerMat.pos.Z) * (vehMat.pos.Z - playerMat.pos.Z);
+
+												float fDistance = (fSX + fSY + fSZ);
+
+												if(fDistance <= 100.0f)
+													bChangeTheResult = true;
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}	
+			}
+		}
+	}
+
+	if(bChangeTheResult)
+		*((unsigned char*)thiz + 13) |= 1;
+
+	return CTaskSimpleUseGun__SetPedPosition(thiz, a2);
+}
+
+void (*CPhysical__RemoveAndAdd)(uintptr_t thiz);
+void CPhysical__RemoveAndAdd_hook(uintptr_t thiz)
+{
+	uintptr_t dwRetAddr = 0;
+ 	__asm__ volatile ("mov %0, lr" : "=r" (dwRetAddr));
+ 	dwRetAddr -= g_libGTASA;
+
+	Log("retaddr: 0x%X", dwRetAddr);
+
+	struct Pool {
+		void *objects;
+		uint8_t *flags;
+		uint32_t count;
+		uint32_t top;
+		uint32_t bInitialized;
+	};
+	static_assert(sizeof(Pool) == 0x14);
+
+	Pool *pEntryInfoNodePool = *(Pool**)(g_libGTASA + 0x8B93D8);
+	Log("count: %d, top: %d, objects: 0x%X", pEntryInfoNodePool->count, pEntryInfoNodePool->top, (uintptr_t)pEntryInfoNodePool->objects);
+	
+
+	/*if(dwRetAddr == 0x3AA875)
+	{
+		CPlayerPed *pPlayerPed = pGame->FindPlayerPed();
+		if(pPlayerPed)
+		{
+			for(int i = 0; i < 10; i++)
+			{
+				if(pPlayerPed->m_bObjectSlotUsed[i] && pPlayerPed->m_pAttachedObjects[i])
+				{
+					if(thiz == (uintptr_t)pPlayerPed->m_pAttachedObjects[i])
+					{
+						return; // stop rebuilding an object
+					}
+				}
+			}
+		}
+
+		// attempt to find an object from remote players
+		if(pNetGame)
+		{
+			CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
+			if(pPlayerPool)
+			{
+				for(PLAYERID i = 0; i < MAX_PLAYERS; i++)
+				{
+					if(pPlayerPool->GetSlotState(i))
+					{
+						CRemotePlayer *pRemotePlayer = pPlayerPool->GetAt(i);
+						if(pRemotePlayer)
+						{
+							pPlayerPed = pRemotePlayer->GetPlayerPed();
+							if(pPlayerPed)
+							{
+								for(int i = 0; i < 10; i++)
+								{
+									if(pPlayerPed->m_bObjectSlotUsed[i] && pPlayerPed->m_pAttachedObjects[i])
+									{
+										if(thiz == (uintptr_t)pPlayerPed->m_pAttachedObjects[i])
+										{
+											return; // stop rebuilding an object
+										}
+									}s
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}*/
+
+	return CPhysical__RemoveAndAdd(thiz);
+}
 
 void InstallHooks()
 {
+	#ifdef RELEASE_BETA
+	//SetUpHook(g_libGTASA+0x3AA5C8, (uintptr_t)CPhysical__RemoveAndAdd_hook, (uintptr_t*)&CPhysical__RemoveAndAdd);
+	//SetUpHook(g_libGTASA+0x565864, (uintptr_t)CWeapon__DoWeaponEffect_hook, (uintptr_t*)&CWeapon__DoWeaponEffect);
+	//SetUpHook(g_libGTASA+0x46D4E4, (uintptr_t)CTaskSimpleUseGun__FireGun_hook, (uintptr_t*)&CTaskSimpleUseGun__FireGun);
+	SetUpHook(g_libGTASA+0x46D6AC, (uintptr_t)CTaskSimpleUseGun__SetPedPosition_hook, (uintptr_t*)&CTaskSimpleUseGun__SetPedPosition);
+	SetUpHook(g_libGTASA+0x1AECC0, (uintptr_t)RwFrameAddChild_hook, (uintptr_t*)&RwFrameAddChild);	
+	SetUpHook(g_libGTASA+0x2DFD30, (uintptr_t)CUpsideDownCarCheck__IsCarUpsideDown_hook, (uintptr_t*)&CUpsideDownCarCheck__IsCarUpsideDown);
+	#endif
+	SetUpHook(g_libGTASA+0x566CAC, (uintptr_t)CWeapon__DoBulletImpact_hook, (uintptr_t*)&CWeapon__DoBulletImpact);
+	//SetUpHook(g_libGTASA+0x3D4EAC, (uintptr_t)CHud_DrawVitalStats_hook, (uintptr_t*)&CHud_DrawVitalStats);
+	SetUpHook(g_libGTASA+0x3AF1A0, (uintptr_t)CPools_Initialise_hook, (uintptr_t*)&CPools_Initialise);
+	//SetUpHook(g_libGTASA+0x3C1BF8, (uintptr_t)CWorld__ProcessPedsAfterPreRender_hook, (uintptr_t*)&CWorld__ProcessPedsAfterPreRender);
+	SetUpHook(g_libGTASA+0x336268, (uintptr_t)CModelInfo_AddAtomicModel_hook,(uintptr_t*)&CModelInfo_AddAtomicModel);
+
+	SetUpHook(g_libGTASA+0x569374, (uintptr_t)CWeapon__Fire_hook,(uintptr_t*)&CWeapon__Fire);
+	SetUpHook(g_libGTASA+0x327528, (uintptr_t)ComputeDamageResponse_hook, (uintptr_t*)(&ComputeDamageResponse));
+	
 	SetUpHook(g_libGTASA+0x23B3DC, (uintptr_t)NvFOpen_hook, (uintptr_t*)&NvFOpen);
 	SetUpHook(g_libGTASA+0x3D7CA8, (uintptr_t)CLoadingScreen_DisplayPCScreen_hook, (uintptr_t*)&CLoadingScreen_DisplayPCScreen);
 	SetUpHook(g_libGTASA+0x39AEF4, (uintptr_t)Render2dStuff_hook, (uintptr_t*)&Render2dStuff);
@@ -469,9 +953,11 @@ void InstallHooks()
 	SetUpHook(g_libGTASA+0x3DBA88, (uintptr_t)CRadar__GetRadarTraceColor_hook, (uintptr_t*)&CRadar__GetRadarTraceColor);
 	SetUpHook(g_libGTASA+0x3DAF84, (uintptr_t)CRadar__SetCoordBlip_hook, (uintptr_t*)&CRadar__SetCoordBlip);
 	SetUpHook(g_libGTASA+0x3DE9A8, (uintptr_t)CRadar__DrawRadarGangOverlay_hook, (uintptr_t*)&CRadar__DrawRadarGangOverlay);
+	//InstallMethodHook(g_libGTASA+0x326EE0, (uintptr_t)CPedDamageResponseCalculator_constructor_hook);
 
 	SetUpHook(g_libGTASA+0x482E60, (uintptr_t)CTaskComplexEnterCarAsDriver_hook, (uintptr_t*)&CTaskComplexEnterCarAsDriver);
 	SetUpHook(g_libGTASA+0x4833CC, (uintptr_t)CTaskComplexLeaveCar_hook, (uintptr_t*)&CTaskComplexLeaveCar);
+	//SetUpHook(g_libGTASA + 0x0044A4CC, (uintptr_t)PointGunInDirection_hook, (uintptr_t*)&PointGunInDirection);
 	CodeInject(g_libGTASA+0x2D99F4, (uintptr_t)PickupPickUp_hook, 1);
 
 	HookCPad();

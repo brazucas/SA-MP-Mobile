@@ -40,7 +40,7 @@ public:
 	CKeyBoard();
 	~CKeyBoard();
 
-	void Open(keyboard_callback* handler);
+	void Open(keyboard_callback* handler, bool hiden = false);
 	void Close();
 
 	bool IsOpen() { return m_bEnable; }
@@ -59,8 +59,10 @@ private:
 	void AddCharToInput(char sym);
 	void DeleteCharFromInput();
 	void Send();
+	void addTextToBuffer(std::string msg);
 	
 	bool m_bEnable;
+	bool m_bHidenInput;
 	bool m_bInited;
 	ImVec2 m_Size;
 	ImVec2 m_Pos;
@@ -70,6 +72,9 @@ private:
 	int m_iLayout;
 	int m_iCase;
 	int m_iPushedKey;
+
+	std::vector<std::string> m_szLastItems;
+	int m_iCurrentPosItem;
 
 	std::vector<kbKey> m_Rows[3][4]; // eng, rus, num
 

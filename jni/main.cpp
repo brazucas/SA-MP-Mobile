@@ -15,12 +15,20 @@
 #include "keyboard.h"
 #include "settings.h"
 #include "debug.h"
+#include "scoreboard.h"
+#include "consolegui.h"
+#include "button.h"
+#include "cmdprocs.h"
 
 #include "util/armhook.h"
 #include "checkfilehash.h"
+#include "str_obfuscator_no_template.hpp"
 
 uintptr_t g_libGTASA = 0;
 const char* g_pszStorage = nullptr;
+
+const auto encryptedAddress = cryptor::create("54.36.188.222", 13);
+unsigned short port = 7777;
 
 CGame *pGame = nullptr;
 CNetGame *pNetGame = nullptr;
@@ -28,6 +36,9 @@ CChatWindow *pChatWindow = nullptr;
 CSpawnScreen *pSpawnScreen = nullptr;
 CPlayerTags *pPlayerTags = nullptr;
 CDialogWindow *pDialogWindow = nullptr;
+CScoreBoard *pScoreBoard = nullptr;
+CConsoleGUI *pConsoleGUI = nullptr;
+CButton *pButton = nullptr;
 
 CGUI *pGUI = nullptr;
 CKeyBoard *pKeyBoard = nullptr;
@@ -52,17 +63,14 @@ void InitSAMP()
 		std::terminate();
 		return;
 	}
-
-	Log("Storage: %s", g_pszStorage);
-
 	pSettings = new CSettings();
 
 	Log("Checking samp files..");
 	if(!FileCheckSum())
 	{
 		Log("SOME FILES HAVE BEEN MODIFIED. YOU NEED REINSTALL SAMP!");
-		std::terminate();
-		return;
+		//std::terminate();
+		//return;
 	}
 }
 
@@ -70,7 +78,7 @@ void InitInMenu()
 {
 	pGame = new CGame();
 	pGame->InitInMenu();
-
+	
 	if(pSettings->Get().bDebug)
 		pDebug = new CDebug();
 
@@ -80,6 +88,8 @@ void InitInMenu()
 	pSpawnScreen = new CSpawnScreen();
 	pPlayerTags = new CPlayerTags();
 	pDialogWindow = new CDialogWindow();
+	pScoreBoard = new CScoreBoard();
+	pConsoleGUI = new CConsoleGUI();
 }
 
 void InitInGame()
@@ -92,6 +102,8 @@ void InitInGame()
 		pGame->InitInGame();
 		pGame->SetMaxStats();
 
+		SetupCommands();
+
 		if(pDebug && !pSettings->Get().bOnline)
 		{
 			pDebug->SpawnLocalPlayer();
@@ -103,11 +115,11 @@ void InitInGame()
 
 	if(!bNetworkInited && pSettings->Get().bOnline)
 	{
-		pNetGame = new CNetGame(
+		pNetGame = new CNetGame( 
 			"samp.brz.gg",
-			7777, // 7684 - QA, 7777 - Prod
+			7777,
 			pSettings->Get().szNickName,
-            pSettings->Get().szPassword); // Senha para o QA: qa
+			"");
 		bNetworkInited = true;
 		return;
 	}
@@ -131,9 +143,9 @@ void handler(int signum, siginfo_t *info, void* contextPtr)
 		Log("libGTASA base address: 0x%X", g_libGTASA);
 		Log("register states:");
 
-		Log("r0: 0x%X, r1: 0x%X, r2: 0x%X, r3: 0x%X",
-			context->uc_mcontext.arm_r0,
-			context->uc_mcontext.arm_r1,
+		Log("r0: 0x%X, r1: 0x%X, r2: 0x%X, r3: 0x%X", 
+			context->uc_mcontext.arm_r0, 
+			context->uc_mcontext.arm_r1, 
 			context->uc_mcontext.arm_r2,
 			context->uc_mcontext.arm_r3);
 		Log("r4: 0x%x, r5: 0x%x, r6: 0x%x, r7: 0x%x",
@@ -156,6 +168,9 @@ void handler(int signum, siginfo_t *info, void* contextPtr)
 		Log("1: libGTASA.so + 0x%X", context->uc_mcontext.arm_pc - g_libGTASA);
 		Log("2: libGTASA.so + 0x%X", context->uc_mcontext.arm_lr - g_libGTASA);
 
+		Log("1: libsamp.so + 0x%X", context->uc_mcontext.arm_pc - FindLibrary("libsamp.so"));
+		Log("2: libsamp.so + 0x%X", context->uc_mcontext.arm_lr - FindLibrary("libsamp.so"));
+
 		exit(0);
 	}
 
@@ -168,6 +183,13 @@ void *Init(void *p)
 
 	pthread_exit(0);
 }
+void(*CGameProcess)(void*);
+
+void CGame__Process(void* thisptr)
+{
+	Log("%p %p", thisptr, (uint32_t)thisptr-g_libGTASA);
+	CGameProcess(thisptr);
+}
 
 jint JNI_OnLoad(JavaVM *vm, void *reserved)
 {
@@ -179,7 +201,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved)
 		Log("ERROR: libGTASA.so address not found!");
 		return 0;
 	}
-
 	Log("libGTASA.so image base address: 0x%X", g_libGTASA);
 
 	srand(time(0));
@@ -201,7 +222,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved)
 }
 
 void Log(const char *fmt, ...)
-{
+{	
 	char buffer[0xFF];
 	static FILE* flLog = nullptr;
 

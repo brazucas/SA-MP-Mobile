@@ -2,6 +2,7 @@
 #include "game/game.h"
 #include "netgame.h"
 #include "chatwindow.h"
+#include "../game/actionstuff.h"
 
 extern CGame *pGame;
 extern CNetGame *pNetGame;
@@ -26,7 +27,7 @@ CRemotePlayer::CRemotePlayer()
 
 	m_byteSpecialAction = 0;
 	m_byteSeatID = 0;
-
+	m_byteWeaponShotID = 0xFF;
 	m_fReportedHealth = 0.0f;
 	m_fReportedArmour = 0.0f;
 }
@@ -35,7 +36,6 @@ CRemotePlayer::~CRemotePlayer()
 {
 	Remove();
 }
-
 void CRemotePlayer::Process()
 {
 	CPlayerPool *pPool = pNetGame->GetPlayerPool();
@@ -49,6 +49,21 @@ void CRemotePlayer::Process()
 		if(GetState() == PLAYER_STATE_ONFOOT && 
 			m_byteUpdateFromNetwork == UPDATE_TYPE_ONFOOT && !m_pPlayerPed->IsInVehicle())
 		{
+			// UPDATE CURRENT WEAPON
+
+			if (GetPlayerPed()->GetCurrentWeapon() != m_ofSync.byteCurrentWeapon)
+			{
+				GetPlayerPed()->GiveWeapon(m_ofSync.byteCurrentWeapon, 9999);
+				GetPlayerPed()->SetArmedWeapon(m_ofSync.byteCurrentWeapon);
+			}
+			// First person weapon action hack
+			/*if (!IS_TARGETING(m_ofSync.wKeys)) 
+			{
+				//0x0043893C
+				((uint32_t(*)(uintptr_t, uintptr_t))(g_libGTASA + 0x0043893C + 1))((uintptr_t)m_pPlayerPed, 1);
+			}*/
+			
+
 			UpdateOnFootPositionAndSpeed(&m_ofSync.vecPos, &m_ofSync.vecMoveSpeed);
 			UpdateOnFootTargetPosition();
 		}
@@ -89,7 +104,34 @@ void CRemotePlayer::Process()
 		if(GetState() == PLAYER_STATE_ONFOOT && !m_pPlayerPed->IsInVehicle())
 		{
 			SlerpRotation();
-			m_pPlayerPed->SetKeys(m_ofSync.wKeys, m_ofSync.lrAnalog, m_ofSync.udAnalog);
+			//ProcessSpecialActions(m_ofSync.byteSpecialAction);
+			
+			if (m_byteWeaponShotID != 0xFF)
+			{
+				//weapon sync
+				//MATRIX4X4 localMat;
+				//pPool->GetLocalPlayer()->GetPlayerPed()->GetMatrix(&localMat);
+
+				m_ofSync.byteCurrentWeapon = m_byteWeaponShotID;
+				m_pPlayerPed->SetArmedWeapon((int)m_byteWeaponShotID);
+				//ScriptCommand(&task_shoot_at_coord, m_pPlayerPed->m_dwGTAId, localMat.pos.X, localMat.pos.Y, localMat.pos.Z, 10);
+				m_pPlayerPed->SetCurrentAim(pPool->GetLocalPlayer()->GetPlayerPed()->GetCurrentAim());
+				m_pPlayerPed->SetKeys((uint16_t)4, m_ofSync.lrAnalog, m_ofSync.udAnalog);
+
+				//unknown weapon
+				m_byteWeaponShotID = 0xFF;
+			}
+			else
+				m_pPlayerPed->SetKeys(m_ofSync.wKeys, m_ofSync.lrAnalog, m_ofSync.udAnalog);
+
+			if (RemotePlayerKeys[GetPlayerPed()->m_bytePlayerNumber].bKeys[ePadKeys::KEY_HANDBRAKE])
+			{
+				GetPlayerPed()->SetPlayerAimState();
+			}
+			else
+			{
+				GetPlayerPed()->ClearPlayerAimState();
+			}
 			
 			if( m_ofSync.vecMoveSpeed.X == 0.0f &&
 				m_ofSync.vecMoveSpeed.Y == 0.0f &&
@@ -170,6 +212,127 @@ void CRemotePlayer::Process()
 		}
 	}
 }
+
+void CRemotePlayer::ProcessSpecialActions(unsigned char byteSpecialAction)
+{
+	if(!m_pPlayerPed || !m_pPlayerPed->IsAdded()) return;
+
+	if(GetState() == PLAYER_STATE_ONFOOT && m_pPlayerPed->IsAdded())
+	{
+		if((GetTickCount() - m_dwLastHeadMoveUpdate) > 500 && pNetGame->GetHeadMoveState())
+		{
+			VECTOR LookAt;
+			CAMERA_AIM *Aim = GameGetRemotePlayerAim(m_pPlayerPed->m_bytePlayerNumber);
+			LookAt.X = Aim->pos1x + (Aim->f1x * 20.0f);
+			LookAt.Y = Aim->pos1y + (Aim->f1y * 20.0f);
+			LookAt.Z = Aim->pos1z + (Aim->f1z * 20.0f);
+			m_pPlayerPed->ApplyCommandTask("FollowPedSA", 0, 2000, -1, &LookAt, 0, 0.1f, 500, 3, 0);
+			m_dwLastHeadMoveUpdate = GetTickCount();
+		}
+	}
+}
+
+/*void CRemotePlayer::ProcessSpecialActions(unsigned char byteSpecialAction)
+{
+	if(!m_pPlayerPed || !m_pPlayerPed->IsAdded()) return;
+
+	if(GetState() != PLAYER_STATE_ONFOOT){
+		byteSpecialAction = SPECIAL_ACTION_NONE;
+		m_ofSync.byteSpecialAction = SPECIAL_ACTION_NONE;
+	}
+
+	// headsync:always
+	if(GetState() == PLAYER_STATE_ONFOOT && m_pPlayerPed->IsAdded()) {
+		if((GetTickCount() - m_dwLastHeadUpdate) > 500 && bHeadMove) {
+            VECTOR LookAt;
+			CAMERA_AIM *Aim = GameGetRemotePlayerAim(m_pPlayerPed->m_bytePlayerNumber);
+            LookAt.X = Aim->pos1x + (Aim->f1x * 20.0f);
+			LookAt.Y = Aim->pos1y + (Aim->f1y * 20.0f);
+			LookAt.Z = Aim->pos1z + (Aim->f1z * 20.0f);
+			m_pPlayerPed->ApplyCommandTask("FollowPedSA",0,2000,-1,&LookAt,0,0.1f,500,3,0);
+			m_dwLastHeadUpdate = GetTickCount();
+		}
+	}
+
+	// cellphone:start
+	if( byteSpecialAction == SPECIAL_ACTION_USECELLPHONE &&
+		!m_pPlayerPed->IsCellphoneEnabled() ) {
+			//pChatWindow->AddDebugMessage("Player enabled Cell");
+			m_pPlayerPed->ToggleCellphone(1);
+			return;
+	}
+
+	// cellphone:stop
+	if( byteSpecialAction != SPECIAL_ACTION_USECELLPHONE &&
+		m_pPlayerPed->IsCellphoneEnabled() ) {
+			m_pPlayerPed->ToggleCellphone(0);
+			return;
+	}
+
+	// jetpack:start
+	if(byteSpecialAction == SPECIAL_ACTION_USEJETPACK) {
+		if(!m_pPlayerPed->IsInJetpackMode()) {
+			m_pPlayerPed->StartJetpack();
+			return;
+		}
+	}
+
+	// jetpack:stop
+	if(byteSpecialAction != SPECIAL_ACTION_USEJETPACK) {
+		if(m_pPlayerPed->IsInJetpackMode()) {
+			m_pPlayerPed->StopJetpack();
+			return;
+		}
+	}
+
+	// handsup:start
+	if(byteSpecialAction == SPECIAL_ACTION_HANDSUP && !m_pPlayerPed->HasHandsUp()) {
+		m_pPlayerPed->HandsUp();
+	}
+
+	// handsup:stop
+	if(byteSpecialAction != SPECIAL_ACTION_HANDSUP && m_pPlayerPed->HasHandsUp()) {
+		m_pPlayerPed->StopDancing(); // has the same effect
+	}
+
+	// dancing:start
+	if(!m_pPlayerPed->IsDancing() && byteSpecialAction == SPECIAL_ACTION_DANCE1) {
+		m_pPlayerPed->StartDancing(0);
+	}
+	if(!m_pPlayerPed->IsDancing() && byteSpecialAction == SPECIAL_ACTION_DANCE2) {
+		m_pPlayerPed->StartDancing(1);
+	}
+	if(!m_pPlayerPed->IsDancing() && byteSpecialAction == SPECIAL_ACTION_DANCE3) {
+		m_pPlayerPed->StartDancing(2);
+	}
+	if(!m_pPlayerPed->IsDancing() && byteSpecialAction == SPECIAL_ACTION_DANCE4) {
+		m_pPlayerPed->StartDancing(3);
+	}
+
+	// dancing:stop
+	if( m_pPlayerPed->IsDancing() && 
+		(byteSpecialAction != SPECIAL_ACTION_DANCE1 &&
+		byteSpecialAction != SPECIAL_ACTION_DANCE2 && 
+		byteSpecialAction != SPECIAL_ACTION_DANCE3 && 
+		byteSpecialAction != SPECIAL_ACTION_DANCE4) ) {
+			m_pPlayerPed->StopDancing();
+	}
+
+	if(m_pPlayerPed->IsDancing()) m_pPlayerPed->ProcessDancing();
+
+	// pissing:start
+	if(!m_pPlayerPed->IsPissing() && byteSpecialAction == SPECIAL_ACTION_PISSING) {
+		m_pPlayerPed->StartPissing();
+	}
+
+	// pissing:stop
+	if(m_pPlayerPed->IsPissing() && byteSpecialAction != SPECIAL_ACTION_PISSING) {
+		m_pPlayerPed->StopPissing();
+	}
+
+	// parachutes:we don't have any network indicators for this yet
+	m_pPlayerPed->ProcessParachutes();
+}*/
 
 void CRemotePlayer::SlerpRotation()
 {
@@ -466,6 +629,108 @@ void CRemotePlayer::UpdateOnFootTargetPosition()
 		m_pPlayerPed->SetMoveSpeedVector(vec);
 	}
 }
+float                    m_fWeaponDamages[43 + 1]
+= {
+5.0f, /* Fist */
+5.0f, /* Brass Knuckles */
+5.0f, /* Golf Club */
+5.0f, /* Nightstick */
+5.0f, /* Knife */
+5.0f, /* Baseball Bat */
+5.0f, /* Shovel */
+5.0f, /* Pool Cue */
+5.0f, /* Katana */
+5.0f, /* Chainsaw */
+5.0f, /* Purple Dildo */
+5.0f, /* Dildo */
+5.0f, /* Vibrator */
+5.0f, /* Silver Vibrator */
+5.0f, /* Flowers */
+5.0f, /* Cane */
+75.0f, /* Grenade */
+0.0f, /* Tear Gas */
+75.0f, /* Molotov Cocktail */
+0.0f, /* +EMPTY+ */
+0.0f, /* +EMPTY+ */
+0.0f, /* +EMPTY+ */
+25.0f, /* 9mm (pistol) */
+10.0f, /* Silenced 9mm */
+45.0f, /* Desert Eagle */
+40.0f, /* Shotgun */
+10.0f, /* Sawnoff Shotgun */
+10.0f, /* Combat Shotgun */
+10.0f, /* Micro SMG/Uzi */
+10.0f, /* MP5 */
+10.0f, /* AK-47 */
+10.0f, /* M4 */
+20.0f, /* Tec-9 */
+45.0f, /* Country Rifle */
+45.0f, /* Sniper Rifle */
+75.0f, /* RPG */
+75.0f, /* HS Rocket */
+5.0f, /* Flamethrower */
+70.0f, /* Minigun */
+75.0f, /* Satchel Charge */
+0.0f, /* Detonator */
+1.0f, /* Spraycan */
+5.0f, /* Fire Extinguisher */
+0.0f /* Camera */
+};
+void CRemotePlayer::StoreBulletSyncData(BULLET_SYNC* blSync)
+{
+	CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
+	CPlayerPed* pLocalPed = pPlayerPool->GetLocalPlayer()->GetPlayerPed();
+	PLAYERID byteLocalID = pPlayerPool->GetLocalPlayerID();
+
+	if (!pLocalPed || !m_pPlayerPed) return;
+	if (blSync->hitId == INVALID_PLAYER_ID) return;
+	if (blSync->hitType == BULLET_HIT_TYPE_PLAYER && blSync->hitId != byteLocalID) return;
+	if (blSync->hitType != BULLET_HIT_TYPE_PLAYER) return;
+	if (pLocalPed->GetActionTrigger() == ACTION_DEATH || pLocalPed->IsDead()) return;
+	
+	if(m_pPlayerPed->GetActionTrigger() == ACTION_DEATH || m_pPlayerPed->IsDead()) return; // Already died
+
+	uint8_t byteWeaponID = blSync->weapId;
+	float
+		fDamage = 0.0f, //damage amount
+		fAmount = 0.0f, //amount
+		fHealth = pLocalPed->GetHealth(), //health
+		fArmour = pLocalPed->GetArmour(); //armour
+
+	if (byteWeaponID < 0 || byteWeaponID > 43) return; //invalid weapon id
+
+	fDamage = m_fWeaponDamages[byteWeaponID];
+
+	if (fHealth > 0.0f && fArmour > 0.0f)//health & armour
+	{
+		fAmount = fArmour - fDamage;
+		fArmour = fAmount < 0.0f ? 0.0f : fAmount;
+
+		if (fArmour <= 0.0f)
+			fHealth += fAmount;
+	}
+	else if (fHealth > 0.0f && fArmour <= 0.0f) //only health
+	{
+		fArmour = 0.0f;
+
+		fAmount = fHealth - fDamage;
+		fHealth = fAmount;
+	}
+
+	//remoteplayer shot
+	m_byteWeaponShotID = byteWeaponID;
+	m_ofSync.byteCurrentWeapon = byteWeaponID;
+
+	//set health & armour
+	pLocalPed->SetArmour(fArmour);
+	pLocalPed->SetHealth(fHealth);
+
+	if (fHealth <= 0.0f) {
+		//death moment
+		pLocalPed->SetDead();
+		//pPlayerPool->GetLocalPlayer()->SendWastedNotification();
+	}
+}
 
 void CRemotePlayer::SetPlayerColor(uint32_t dwColor)
 {
@@ -481,6 +746,46 @@ void CRemotePlayer::Say(unsigned char* szText)
 		char * szPlayerName = pPlayerPool->GetPlayerName(m_PlayerID);
 		pChatWindow->AddChatMessage(szPlayerName,GetPlayerColor(), (char*)szText);
 	}
+}
+
+void CRemotePlayer::UpdateAimFromSyncData(AIM_SYNC_DATA * paimSync)
+{
+	if(!m_pPlayerPed) return;
+	m_pPlayerPed->SetCameraMode(paimSync->byteCamMode);
+
+	CAMERA_AIM Aim;
+	
+	Aim.f1x = paimSync->vecAimf1[0];
+	Aim.f1y = paimSync->vecAimf1[1];
+	Aim.f1z = paimSync->vecAimf1[2];
+	
+	Aim.f2x = paimSync->vecAimf1[0];
+	Aim.f2y = paimSync->vecAimf1[1];
+	Aim.f2z = paimSync->vecAimf1[2];
+
+	Aim.pos1x = paimSync->vecAimPos[0];
+	Aim.pos1y = paimSync->vecAimPos[1];
+	Aim.pos1z = paimSync->vecAimPos[2];
+
+	Aim.pos2x = paimSync->vecAimPos[0];
+	Aim.pos2y = paimSync->vecAimPos[1];
+	Aim.pos2z = paimSync->vecAimPos[2];
+
+	m_pPlayerPed->SetCurrentAim(&Aim);
+	m_pPlayerPed->SetAimZ(paimSync->fAimZ);
+
+	float fExtZoom = (float)(paimSync->byteCamExtZoom)/63.0f;
+	m_pPlayerPed->SetCameraExtendedZoom(fExtZoom);
+	
+	WEAPON_SLOT_TYPE* pwstWeapon = m_pPlayerPed->GetCurrentWeaponSlot();
+	if (paimSync->byteWeaponState == WS_RELOADING)
+		pwstWeapon->dwState = 2;		// Reloading
+	else
+		if (paimSync->byteWeaponState != WS_MORE_BULLETS) 
+			pwstWeapon->dwAmmoInClip = (uint32_t)paimSync->byteWeaponState;
+		else
+			if (pwstWeapon->dwAmmoInClip < 2)
+				pwstWeapon->dwAmmoInClip = 2;
 }
 
 void CRemotePlayer::StoreOnFootFullSyncData(ONFOOT_SYNC_DATA *pofSync, uint32_t dwTime)
@@ -503,6 +808,10 @@ void CRemotePlayer::StoreOnFootFullSyncData(ONFOOT_SYNC_DATA *pofSync, uint32_t 
 				if( m_byteSpecialAction != SPECIAL_ACTION_ENTER_VEHICLE && 
 				m_byteSpecialAction != SPECIAL_ACTION_EXIT_VEHICLE /*&& !sub_100A6F00()*/)
 					RemoveFromVehicle();
+			}
+			else
+			{
+				SetSpecialAction(m_byteSpecialAction);
 			}
 		}
 
@@ -529,6 +838,8 @@ void CRemotePlayer::StoreInCarFullSyncData(INCAR_SYNC_DATA *picSync, uint32_t dw
 		m_dwLastRecvTick = GetTickCount();
 
 		m_byteSpecialAction = 0;
+
+		m_pCurrentVehicle->SetSirenState(picSync->byteSirenOn);
 
 		if(m_pPlayerPed && !m_pPlayerPed->IsInVehicle())
 			HandleVehicleEntryExit();
@@ -575,6 +886,11 @@ uint32_t CRemotePlayer::GetPlayerColor()
 	return TranslateColorCodeToRGBA(m_PlayerID);
 }
 
+uint32_t CRemotePlayer::GetPlayerColorAsARGB()
+{
+	return (TranslateColorCodeToRGBA(m_PlayerID) >> 8) | 0xFF000000;	
+}
+
 void CRemotePlayer::ShowGlobalMarker(short sX, short sY, short sZ)
 {
 	if(m_dwGlobalMarkerID)
@@ -601,4 +917,19 @@ void CRemotePlayer::HideGlobalMarker()
 void CRemotePlayer::StateChange(uint8_t byteNewState, uint8_t byteOldState)
 {
 
+}
+
+void CRemotePlayer::SetSpecialAction(uint8_t special_action)
+{
+	if(special_action == SPECIAL_ACTION_DUCK && GetPlayerPed()->IsCrouching() == false)
+	{
+		GetPlayerPed()->ApplyCrouch();
+	}
+	else if(special_action == SPECIAL_ACTION_NONE)
+	{
+		if(GetPlayerPed()->IsCrouching())
+		{
+			GetPlayerPed()->ResetCrouch();
+		}
+	}
 }

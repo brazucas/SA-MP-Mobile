@@ -23,8 +23,5 @@ FILE_LIST += $(wildcard $(LOCAL_PATH)/vendor/hash/md5.cpp)
 
 LOCAL_SRC_FILES := $(FILE_LIST:$(LOCAL_PATH)/%=%)
 
-LOCAL_WHOLE_STATIC_LIBRARIES += android_support
 LOCAL_CPPFLAGS := -w -s -fvisibility=hidden -pthread -Wall -fpack-struct=1 -O2 -std=c++14 -fexceptions
-
 include $(BUILD_SHARED_LIBRARY)
-$(call import-module,android/support)

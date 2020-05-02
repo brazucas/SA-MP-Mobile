@@ -3,6 +3,8 @@
 #define MAX_MESSAGE_LENGTH	144
 #define MAX_LINE_LENGTH		MAX_MESSAGE_LENGTH / 2
 
+typedef void(*CMDPROC)(const char *params);
+
 enum eChatMessageType
 {
 	CHAT_TYPE_NONE = 0,
@@ -27,10 +29,16 @@ public:
 	CChatWindow();
 	~CChatWindow();
 
+	void OnExitFromInput();
+	bool CheckScrollBar(int x, int y);
+
 	void AddChatMessage(char* szNick, uint32_t dwNickColor, char* szMessage);
-	void AddInfoMessage(char* szFormat, ...);
+	void AddInfoMessage(const char* szFormat, ...);
 	void AddDebugMessage(char* szFormat, ...);
 	void AddClientMessage(uint32_t dwColor, char* szStr);
+
+	void AddCmdProc(const char* cmdname, CMDPROC cmdproc);
+	void DeleteCmdProc(const char *cmdname);
 
 protected:
 	void Render();
@@ -45,10 +53,18 @@ private:
 	void PushBack(CHAT_WINDOW_ENTRY &entry);
 
 private:
+
+	bool m_bIsOpened;
+	bool bSwipeScroll;
+	
 	float m_fChatPosX, m_fChatPosY;
 	float m_fChatSizeX, m_fChatSizeY;
 
 	int m_iMaxMessages;
+	int m_iOffsetY;
+	int m_iLastPosY;
+	
+	//std::vector
 	std::list<CHAT_WINDOW_ENTRY> m_ChatWindowEntries;
 
 	uint32_t m_dwTextColor;

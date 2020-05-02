@@ -40,4 +40,8 @@ public:
 	void AttachToVehicle(int labelID, VEHICLEID vehicleID, VECTOR pos);
 	void Update3DLabel(int labelID, uint32_t color, char* text);
 	void Draw();
+
+	bool m_bFlag;
+	bool GetFlag() { return m_bFlag; }
+	void UpdateFlag();
 };

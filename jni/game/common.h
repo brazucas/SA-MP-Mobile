@@ -1,6 +1,6 @@
 #pragma once
 
-#define PLAYER_PED_SLOTS	120
+#define PLAYER_PED_SLOTS	140
 
 typedef unsigned short VEHICLEID;
 typedef unsigned short PLAYERID;
@@ -10,6 +10,13 @@ typedef unsigned short PLAYERID;
 #define IN_VEHICLE(x) ((x->dwStateFlags & 0x100) >> 8)
 
 //-----------------------------------------------------------
+typedef struct _RECT
+{
+	float fLeft;
+	float fBottom;
+	float fRight;
+	float fTop;
+} RECT, *PRECT;
 
 #pragma pack(1)
 typedef struct _VECTOR 
@@ -36,20 +43,39 @@ typedef struct _MATRIX4X4
 typedef struct _ENTITY_TYPE
 {
 	// ENTITY STUFF
-	uint32_t vtable; 		// 0-4		;vtable
-	PADDING(_pad91, 16);	// 4-20
-	MATRIX4X4 *mat; 		// 20-24	;mat
-	PADDING(_pad92, 10);	// 24-34
-	uint16_t nModelIndex; 	// 34-36	;ModelIndex
-	PADDING(_pad93, 32);	// 36-68
-	VECTOR vecMoveSpeed; 	// 68-80	;vecMoveSpeed
-	VECTOR vecTurnSpeed; 	// 80-92	;vecTurnSpeed
-	PADDING(_pad94, 88);	// 92-180
-	uintptr_t dwUnkModelRel; // 180-184 ;сотка инфа
+	uint32_t vtable; 			// 0-4		;vtable
+	PADDING(_pad91, 16);		// 4-20
+	MATRIX4X4 *mat; 			// 20-24	;mat
+	uintptr_t pdwRenderWare;	// 24-28	;rwObject
+	uint32_t dwProcessingFlags;	// 28-32
+	PADDING(_pad92, 2);			// 24-34
+	uint16_t nModelIndex; 		// 34-36	;ModelIndex
+	PADDING(_pad93, 32);		// 36-68
+	VECTOR vecMoveSpeed; 		// 68-80	;vecMoveSpeed
+	VECTOR vecTurnSpeed; 		// 80-92	;vecTurnSpeed
+	PADDING(_pad94, 88);		// 92-180
+	uintptr_t dwUnkModelRel; 	// 180-184 ;пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
 
 } ENTITY_TYPE;
 
 //-----------------------------------------------------------
+
+#pragma pack(1)
+typedef struct _WEAPON_SLOT_TYPE
+{
+	uint32_t dwType;
+	uint32_t dwState;
+	uint32_t dwAmmoInClip;
+	uint32_t dwAmmo;
+	PADDING(_pwep1,12);
+} WEAPON_SLOT_TYPE;  // MUST BE EXACTLY ALIGNED TO 28 bytes
+
+typedef struct
+{
+	char unk[0x14];
+	int iNodeId;
+
+} AnimBlendFrameData;
 
 #pragma pack(1)
 typedef struct _PED_TYPE
@@ -59,30 +85,68 @@ typedef struct _PED_TYPE
 	uint32_t _pad107;			// 0358-0362	;dwPedType
 	PADDING(_pad101, 734);		// 0362-1096
 	uint32_t dwAction;			// 1096-1100	;Action
-	PADDING(_pad102, 52);		// 1100-1152
+	PADDING(_pad102, 36);		// 1100-1136
+	uintptr_t dwInvulFlags; 	// 1136-1140	0x1000 = can_decap
+	PADDING(_pad228, 8); 		// 1140-1148
+	uintptr_t Tasks; 			// 1148-1152
 	uint32_t dwStateFlags; 		// 1152-1156	;StateFlags
-	PADDING(_pad103, 188);		// 1156-1344
+	PADDING(_pad103, 12);		// 1156-1168
+	AnimBlendFrameData* aPedBones[19];	// 1168 - 1244
+	PADDING(_pad103_, 100);		// 1244-1344
 	float fHealth;		 		// 1344-1348	;Health
 	float fMaxHealth;			// 1348-1352	;MaxHealth
 	float fArmour;				// 1352-1356	;Armour
-	PADDING(_pad104, 12);		// 1356-1368
+	float fAim;
+	PADDING(_pad104, 8);		// 1356-1368
 	float fRotation1;			// 1368-1372	;Rotation1
 	float fRotation2;			// 1372-1376	;Rotation2
 	PADDING(_pad105, 44);		// 1376-1420
 	uint32_t pVehicle;			// 1420-1424	;pVehicle
 	PADDING(_pad108, 8);		// 1424-1432
 	uint32_t dwPedType;			// 1432-1436	;dwPedType
-	PADDING(_pad109, 456);		// 1436-1892
-	uint32_t* pdwDamageEntity;	// 1892-1896	;pdwDamageEntity
+	uint32_t dwUnk1;	 // 1436-1440
+	WEAPON_SLOT_TYPE WeaponSlots[13]; // 1440-1804
+	PADDING(_pad270, 12); // 1804-1816
+	uint8_t byteCurWeaponSlot; // 1816-1817
+	PADDING(_pad280, 23); // 1817-1840
+	uint32_t pFireObject;	 // 1840-1844
+	PADDING(_pad281, 44); // 1844-1888
+	uint32_t  dwWeaponUsed; // 1888-1892
+	uintptr_t pdwDamageEntity; // 1892-1896
 } PED_TYPE;
 
+#pragma pack(1)
+struct AIM_SYNC_DATA
+{
+	uint8_t	byteCamMode;
+	float	vecAimf1[3];
+	float	vecAimPos[3];
+	float	fAimZ;
+	uint8_t	byteCamExtZoom : 6;	// 0-63 normalized
+	uint8_t	byteWeaponState : 2;		// see eWeaponState
+	uint8_t	bUnk;
+};
 //-----------------------------------------------------------
+
+#pragma pack(1)
+struct BULLET_SYNC
+{
+	uint8_t hitType;
+	uint16_t hitId;
+	float origin[3];
+	float hitPos[3];
+	float offsets[3];
+	uint8_t weapId;
+};
 
 #pragma pack(1)
 typedef struct _VEHICLE_TYPE
 {
 	ENTITY_TYPE entity;			// 0000-0184	;entity
-	PADDING(_pad201, 892);		// 0184-1076
+	PADDING(_pad201, 885);		// 0184-1069
+	uint8_t _pad2011 : 7;		// 1069-1070 	(bits 0..6)
+	uint8_t byteSirenOn : 1;	// 1069-1070	(bit 7)
+	PADDING(_pad2012, 6);		// 1070-1076
 	uint8_t byteColor1;			// 1076-1077	;byteColor1
 	uint8_t byteColor2;			// 1077-1078	;byteColor2
 	PADDING(_pad204, 42);		// 1078-1120
@@ -93,6 +157,23 @@ typedef struct _VEHICLE_TYPE
 	PADDING(_pad203, 56);		// 1228-1284
 	uint32_t dwDoorsLocked;		// 1284-1288	;dwDoorsLocked
 } VEHICLE_TYPE;
+
+#pragma pack(1)
+typedef struct _VEHICLE_PARAMS_STATUS
+{
+	int bEngine;
+	int bLights;
+	int bAlarm;
+	int bDoors;
+	int bBonnet;
+	int bBoot;
+	int bObjective;
+	//doors
+	int bDriver;
+	int bPassenger;
+	int bBackleft;
+	int bBackright;
+} VEHICLE_PARAMS_STATUS;
 
 //-----------------------------------------------------------
 
@@ -169,8 +250,91 @@ typedef struct _VEHICLE_TYPE
 #define WEAPON_MODEL_JETPACK			370	// newly added
 #define WEAPON_MODEL_PARACHUTE			371
 
+#define WEAPON_MODEL_PARACHUTE			371
+#define WEAPON_FIST                        0
+#define WEAPON_BRASSKNUCKLE                1
+#define WEAPON_GOLFCLUB                    2
+#define WEAPON_NITESTICK                3
+#define WEAPON_KNIFE                    4
+#define WEAPON_BAT                        5
+#define WEAPON_SHOVEL                    6
+#define WEAPON_POOLSTICK                7
+#define WEAPON_KATANA                    8
+#define WEAPON_CHAINSAW                    9
+#define WEAPON_DILDO                    10
+#define WEAPON_DILDO2                    11
+#define WEAPON_VIBRATOR                    12
+#define WEAPON_VIBRATOR2                13
+#define WEAPON_FLOWER                    14
+#define WEAPON_CANE                        15
+#define WEAPON_GRENADE                    16
+#define WEAPON_TEARGAS                    17
+#define WEAPON_MOLTOV                    18
+#define WEAPON_COLT45                    22
+#define WEAPON_SILENCED                    23
+#define WEAPON_DEAGLE                    24
+#define WEAPON_SHOTGUN                    25
+#define WEAPON_SAWEDOFF                    26
+#define WEAPON_SHOTGSPA                    27
+#define WEAPON_UZI                        28
+#define WEAPON_MP5                        29
+#define WEAPON_AK47                        30
+#define WEAPON_M4                        31
+#define WEAPON_TEC9                        32
+#define WEAPON_RIFLE                    33
+#define WEAPON_SNIPER                    34
+#define WEAPON_ROCKETLAUNCHER            35
+#define WEAPON_HEATSEEKER                36
+#define WEAPON_FLAMETHROWER                37
+#define WEAPON_MINIGUN                    38
+#define WEAPON_SATCHEL                    39
+#define WEAPON_BOMB                        40
+#define WEAPON_SPRAYCAN                    41
+#define WEAPON_FIREEXTINGUISHER            42
+#define WEAPON_CAMERA                    43
+#define WEAPON_PARACHUTE                46
+#define WEAPON_VEHICLE                    49
+#define WEAPON_HELIBLADES				50
+#define WEAPON_EXPLOSION				51
+#define WEAPON_DROWN                    53
+#define WEAPON_COLLISION                54
+#define WEAPON_UNKNOWN					0xFF
+
 #define OBJECT_PARACHUTE				3131
 #define OBJECT_CJ_CIGGY					1485
 #define OBJECT_DYN_BEER_1				1486
 #define OBJECT_CJ_BEER_B_2				1543
 #define OBJECT_CJ_PINT_GLASS			1546
+
+// PED BONES
+enum ePedBones
+{
+	BONE_PELVIS1 = 1,
+	//BONE_PELVIS = 2,
+	BONE_SPINE1 = 3,
+	BONE_UPPERTORSO = 4,
+	BONE_NECK = 5,
+	BONE_HEAD2 = 6,
+	BONE_HEAD1 = 7,
+	BONE_HEAD = 8,
+	BONE_RIGHTUPPERTORSO = 21,
+	BONE_RIGHTSHOULDER = 22,
+	BONE_RIGHTELBOW = 23,
+	BONE_RIGHTWRIST = 24,
+	BONE_RIGHTHAND = 25,
+	BONE_RIGHTTHUMB = 26,
+	BONE_LEFTUPPERTORSO = 31,
+	BONE_LEFTSHOULDER = 32,
+	BONE_LEFTELBOW = 33,
+	BONE_LEFTWRIST = 34,
+	BONE_LEFTHAND = 35,
+	BONE_LEFTTHUMB = 36,
+	BONE_LEFTHIP = 41,
+	BONE_LEFTKNEE = 42,
+	BONE_LEFTANKLE = 43,
+	BONE_LEFTFOOT = 44,
+	BONE_RIGHTHIP = 51,
+	BONE_RIGHTKNEE = 52,
+	BONE_RIGHTANKLE = 53,
+	BONE_RIGHTFOOT = 54,
+};

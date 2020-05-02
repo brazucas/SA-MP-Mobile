@@ -43,7 +43,7 @@ void InitHookStuff()
 {
     Log("Initializing hook system..");
 	memlib_start = g_libGTASA+0x180044;
-	memlib_end = memlib_start + 0x290;
+	memlib_end = memlib_start + 0x390;
 
 	mmap_start = (uintptr_t)mmap(0, PAGE_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	mprotect((void*)(mmap_start & 0xFFFFF000), PAGE_SIZE, PROT_READ | PROT_EXEC | PROT_WRITE);
@@ -54,6 +54,15 @@ void JMPCode(uintptr_t func, uintptr_t addr)
 {
 	uint32_t code = ((addr-func-4) >> 12) & 0x7FF | 0xF000 | ((((addr-func-4) >> 1) & 0x7FF | 0xB800) << 16);
     WriteMemory(func, (uintptr_t)&code, 4);
+}
+
+uintptr_t zalupa(uintptr_t func, uintptr_t addr)
+{
+	//uintptr_t old = *(uintptr_t*)(func);
+
+	JMPCode(func, addr);
+	return 0;
+	//return old;
 }
 
 void WriteHookProc(uintptr_t addr, uintptr_t func)

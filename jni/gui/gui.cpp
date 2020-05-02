@@ -10,6 +10,9 @@
 #include "keyboard.h"
 #include "debug.h"
 #include "settings.h"
+#include "scoreboard.h"
+#include "consolegui.h"
+#include "button.h"
 
 extern CChatWindow *pChatWindow;
 extern CSpawnScreen *pSpawnScreen;
@@ -19,6 +22,8 @@ extern CDebug *pDebug;
 extern CSettings *pSettings;
 extern CKeyBoard *pKeyBoard;
 extern CNetGame *pNetGame;
+extern CScoreBoard *pScoreBoard;
+extern CConsoleGUI *pConsoleGUI;
 
 /* imgui_impl_renderware.h */
 void ImGui_ImplRenderWare_RenderDrawData(ImDrawData* draw_data);
@@ -27,8 +32,8 @@ void ImGui_ImplRenderWare_NewFrame();
 void ImGui_ImplRenderWare_ShutDown();
 
 /*
-	设置了GUI元素的所有坐标。
-	关于1920x1080分辨率
+	Все координаты GUI-элементов задаются
+	относительно разрешения 1920x1080
 */
 #define MULT_X	0.00052083333f	// 1/1920
 #define MULT_Y	0.00092592592f 	// 1/1080
@@ -58,10 +63,10 @@ CGUI::CGUI()
 
 	// setup style
 	ImGuiStyle& style = ImGui::GetStyle();
-	style.ScrollbarSize = ScaleY(55.0f);
+	style.ScrollbarSize = ScaleY(35.0f);
 	style.WindowBorderSize = 0.0f;
-	ImGui::StyleColorsDark();
-
+	ImGui::StyleColorsClassic();
+	//ImGui::StyleColorsDark();
 
 	// load fonts
 	char path[0xFF];
@@ -93,6 +98,11 @@ void CGUI::Render()
 {
 	ImGuiIO& io = ImGui::GetIO();
 
+	if(pNetGame && pNetGame->GetTextDrawPool())
+	{
+		pNetGame->GetTextDrawPool()->Draw();
+	}
+
 	ImGui_ImplRenderWare_NewFrame();
 	ImGui::NewFrame();
 
@@ -104,6 +114,11 @@ void CGUI::Render()
 	{
 		pNetGame->GetLabelPool()->Draw();
 	}
+
+	/*if(pNetGame && pNetGame->GetTextDrawPool())
+	{
+		pNetGame->GetTextDrawPool()->Draw();
+	}*/
 	
 	if(pChatWindow) pChatWindow->Render();
 
@@ -111,6 +126,87 @@ void CGUI::Render()
 
 	if(pSpawnScreen) pSpawnScreen->Render();
 	if(pKeyBoard) pKeyBoard->Render();
+
+	if(pScoreBoard) pScoreBoard->Draw();
+	
+	if(pConsoleGUI) pConsoleGUI->Draw();
+
+	ImVec2 vecButSize = ImVec2(ImGui::GetFontSize() * 3.5, ImGui::GetFontSize() * 2.5);
+
+	ImGui::SetNextWindowPos(ImVec2(2.0f, io.DisplaySize.y/3-vecButSize.x/2));
+  	ImGui::Begin("###keys", nullptr,
+			ImGuiWindowFlags_NoTitleBar |
+			ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_NoScrollbar |
+			ImGuiWindowFlags_NoSavedSettings |
+			ImGuiWindowFlags_AlwaysAutoResize);
+
+	if (ImGui::Button(m_bKeysStatus ? "<<" : ">>", vecButSize))
+	{
+		if(m_bKeysStatus)
+			m_bKeysStatus = false;
+		else
+			m_bKeysStatus = true;
+	}
+	ImGui::SameLine();
+	if(pNetGame)
+	{
+		CVehiclePool *pVehiclePool = pNetGame->GetVehiclePool();
+		if(pVehiclePool)
+		{
+			VEHICLEID ClosetVehicleID = pVehiclePool->FindNearestToLocalPlayerPed();
+			if(ClosetVehicleID < MAX_VEHICLES && pVehiclePool->GetSlotState(ClosetVehicleID))
+			{
+				CVehicle* pVehicle = pVehiclePool->GetAt(ClosetVehicleID);
+				if(pVehicle)
+				{
+					if(pVehicle->GetDistanceFromLocalPlayerPed() < 4.0f)
+					{
+						if (ImGui::Button("G", vecButSize))
+						{
+							CPlayerPool *pPlayerPool;
+							CLocalPlayer *pLocalPlayer;
+
+							if(pNetGame)
+							{
+								pPlayerPool = pNetGame->GetPlayerPool();
+								if(pPlayerPool)
+								{
+									pLocalPlayer = pPlayerPool->GetLocalPlayer();
+									if(pLocalPlayer)
+									{
+										pLocalPlayer->HandlePassengerEntryEx();
+									}
+								}
+							}
+						}
+						ImGui::SameLine();
+					}
+				}			
+			}
+		}
+	}
+	if (ImGui::Button("Enter", vecButSize))
+	{
+		//pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed()->
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] = true;
+	}
+	if(m_bKeysStatus)
+	{
+		ImGui::SameLine();
+		if (ImGui::Button("Alt", vecButSize))
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_WALK] = true;
+		ImGui::SameLine();
+		if (ImGui::Button("H", vecButSize))
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_CTRL_BACK] = true;
+		ImGui::SameLine();
+		if (ImGui::Button("Y", vecButSize))
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_YES] = true;
+		ImGui::SameLine();
+		if (ImGui::Button("N", vecButSize))
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_NO] = true;
+	}
+  	ImGui::End();
 
 	ImGui::EndFrame();
 	ImGui::Render();
@@ -127,8 +223,17 @@ bool CGUI::OnTouchEvent(int type, bool multi, int x, int y)
 {
 	ImGuiIO& io = ImGui::GetIO();
 
-	if(!pKeyBoard->OnTouchEvent(type, multi, x, y)) return false;
-	if(!pChatWindow->OnTouchEvent(type, multi, x, y)) return false;
+	if(pNetGame)
+		pNetGame->GetTextDrawPool()->OnTouchEvent(type, multi, x, y);
+	if(!pChatWindow->OnTouchEvent(type, multi, x, y))
+	{
+		return false;
+	}
+	if(!pKeyBoard->OnTouchEvent(type, multi, x, y))
+	{
+		return false;
+	}
+	if(!pScoreBoard->OnTouchEvent(type, multi, x, y)) return false;
 
 	switch(type)
 	{
@@ -167,6 +272,32 @@ void CGUI::RenderRakNetStatistics()
 }
 
 void CGUI::RenderText(ImVec2& posCur, ImU32 col, bool bOutline, const char* text_begin, const char* text_end)
+{
+	int iOffset = pSettings->Get().iFontOutline;
+
+	if(bOutline)
+	{
+		posCur.x -= iOffset;
+		ImGui::GetBackgroundDrawList()->AddText(posCur, ImColor(IM_COL32_BLACK), text_begin, text_end);
+		posCur.x += iOffset;
+		// right 
+		posCur.x += iOffset;
+		ImGui::GetBackgroundDrawList()->AddText(posCur, ImColor(IM_COL32_BLACK), text_begin, text_end);
+		posCur.x -= iOffset;
+		// above
+		posCur.y -= iOffset;
+		ImGui::GetBackgroundDrawList()->AddText(posCur, ImColor(IM_COL32_BLACK), text_begin, text_end);
+		posCur.y += iOffset;
+		// below
+		posCur.y += iOffset;
+		ImGui::GetBackgroundDrawList()->AddText(posCur, ImColor(IM_COL32_BLACK), text_begin, text_end);
+		posCur.y -= iOffset;
+	}
+
+	ImGui::GetBackgroundDrawList()->AddText(posCur, col, text_begin, text_end);
+}
+
+void CGUI::RenderOverlayText(ImVec2& posCur, ImU32 col, bool bOutline, const char* text_begin, const char* text_end)
 {
 	int iOffset = pSettings->Get().iFontOutline;
 

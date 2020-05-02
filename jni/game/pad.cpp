@@ -2,16 +2,23 @@
 #include "game.h"
 #include "net/netgame.h"
 #include "util/armhook.h"
+#include "../chatwindow.h"
+#include "actionstuff.h"
 
 extern CGame *pGame;
 extern CNetGame *pNetGame;
+extern CChatWindow* pChatWindow;
 
 PAD_KEYS LocalPlayerKeys;
 PAD_KEYS RemotePlayerKeys[PLAYER_PED_SLOTS];
 
 uintptr_t dwCurPlayerActor = 0;
+uintptr_t dwCurWeaponProcessingPlayer = 0;
 uint8_t byteCurPlayer = 0;
 uint8_t byteCurDriver = 0;
+uint8_t byteInternalPlayer = 0;
+uint16_t wSavedCameraMode2 = 0;
+uint8_t byteSavedCameraMode;
 
 uint16_t (*CPad__GetPedWalkLeftRight)(uintptr_t thiz);
 uint16_t CPad__GetPedWalkLeftRight_hook(uintptr_t thiz)
@@ -170,6 +177,12 @@ uint32_t CPad__DuckJustDown_hook(uintptr_t thiz, int unk)
 {
 	if(dwCurPlayerActor && (byteCurPlayer != 0))
 	{
+		if(IsRemotePlayerDucking(byteCurPlayer) && IsRemotePlayerDuckingReset(byteCurPlayer))
+		{
+			SetRemotePlayerDucking(byteCurPlayer, 0);
+			SetRemotePlayerDuckingReset(byteCurPlayer, 0);
+			return 1;
+		}
 		return 0;
 	}
 	else
@@ -182,9 +195,9 @@ uint32_t (*CPad__MeleeAttackJustDown)(uintptr_t thiz);
 uint32_t CPad__MeleeAttackJustDown_hook(uintptr_t thiz)
 {
 	/*
-		0 - не бьем
-		1 - простой удар (ЛКМ)
-		2 - сильный удар (ПКМ + F)
+		0 - пїЅпїЅ пїЅпїЅпїЅпїЅ
+		1 - пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ (пїЅпїЅпїЅ)
+		2 - пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ (пїЅпїЅпїЅ + F)
 	*/
 
 	if(dwCurPlayerActor && (byteCurPlayer != 0))
@@ -355,29 +368,63 @@ uint32_t CPad__ExitVehicleJustDown_hook(uintptr_t thiz, int a2, uintptr_t vehicl
 	return CPad__ExitVehicleJustDown(thiz, a2, vehicle, a4, vec);
 }
 
+int (*CPlayerPed__UpdateCameraWeaponModes)(uintptr_t thiz, uintptr_t pad, int a3);
+int CPlayerPed__UpdateCameraWeaponModes_hook(uintptr_t thiz, uintptr_t pad, int a3)
+{
+	int result;
+	if (dwCurPlayerActor && (byteCurPlayer != 0))
+	{
+		*(uint8_t*)(g_libGTASA + 0x8E864C) = byteCurPlayer;
+		result = CPlayerPed__UpdateCameraWeaponModes(dwCurPlayerActor, pad, a3);
+		*(uint8_t*)(g_libGTASA + 0x8E864C) = 0;
+	}
+	else
+	{
+		result = CPlayerPed__UpdateCameraWeaponModes(thiz, pad, a3);
+	}
+	return result;
+}
+
 void (*CPed__ProcessControl)(uintptr_t thiz);
 void CPed__ProcessControl_hook(uintptr_t thiz)
 {
 	dwCurPlayerActor = thiz;
 	byteCurPlayer = FindPlayerNumFromPedPtr(dwCurPlayerActor);
-
 	if(dwCurPlayerActor && (byteCurPlayer != 0))
 	{
 		// REMOTE PLAYER
+		byteSavedCameraMode = *pbyteCameraMode;
+		*pbyteCameraMode = GameGetPlayerCameraMode(byteCurPlayer);
+		
+		/*Log("[2:Before PC]");
+		UpdateCameraWeaponModes(thiz);
+		Log("[2:After PC]");*/
+
+		GameStoreLocalPlayerCameraExtZoom();
+		GameSetRemotePlayerCameraExtZoom(byteCurPlayer);
+		
+		// aim switching
+		GameStoreLocalPlayerAim();
+		GameSetRemotePlayerAim(byteCurPlayer);
+		
+		*(uint8_t*)(g_libGTASA + 0x8E864C) = byteCurPlayer;
 
 		// CPed::UpdatePosition nulled from CPed::ProcessControl
 		NOP(g_libGTASA+0x439B7A, 2);
-
 		// call original
 		CPed__ProcessControl(thiz);
 		// restore
 		WriteMemory(g_libGTASA+0x439B7A, (uintptr_t)"\xFA\xF7\x1D\xF8", 4);
+		
+		*(uint8_t*)(g_libGTASA + 0x008E864C) = 0;
+		*pbyteCameraMode = byteSavedCameraMode;
+		//*((uint16_t*)g_libGTASA + 0x8B0808 + 0x7B4) = wSavedCameraMode2;
+		GameSetLocalPlayerCameraExtZoom();
+		GameSetLocalPlayerAim();
 	}
 	else
 	{
 		// LOCAL PLAYER
-
-		// Apply the original code to set ped rot from Cam
 		WriteMemory(g_libGTASA+0x4BED92, (uintptr_t)"\x10\x60", 2);
 
 		(*CPed__ProcessControl)(thiz);
@@ -470,12 +517,247 @@ void AllVehicles__ProcessControl_hook(uintptr_t thiz)
     (( void (*)(VEHICLE_TYPE*))(g_libGTASA+call_addr+1))(pVehicle);
 }
 
+
+uint32_t(*CPad__GetWeapon)(uintptr_t thiz, uintptr_t ped, bool unk);
+uint32_t CPad__GetWeapon_hook(uintptr_t thiz, uintptr_t ped, bool unk)
+{
+	if (dwCurPlayerActor && (byteCurPlayer != 0))
+	{
+		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_FIRE];
+	}
+	else
+	{
+		uint8_t old = *(uint8_t*)(g_libGTASA + 0x008E864C);
+		*(uint8_t*)(g_libGTASA + 0x008E864C) = byteCurPlayer;
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = CPad__GetWeapon(thiz, ped, unk);
+		*(uint8_t*)(g_libGTASA + 0x008E864C) = old;
+		return LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE];
+	}
+}
+
+uint32_t(*CPad__GetEnterTargeting)(uintptr_t thiz);
+uint32_t CPad__GetEnterTargeting_hook(uintptr_t thiz)
+{
+	if (dwCurPlayerActor && (byteCurPlayer != 0))
+	{
+		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_HANDBRAKE];
+	}
+	else
+	{
+		uint8_t old = *(uint8_t*)(g_libGTASA + 0x008E864C);
+		*(uint8_t*)(g_libGTASA + 0x008E864C) = byteCurPlayer;
+
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = CPad__GetEnterTargeting(thiz);
+
+		*(uint8_t*)(g_libGTASA + 0x008E864C) = old;
+		return LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE];
+	}
+}
+
+uintptr_t(*CPad__ProcessPlayerWeapon)(uintptr_t thiz, uintptr_t ped);
+uintptr_t CPad__ProcessPlayerWeapon_hook(uintptr_t thiz, uintptr_t ped)
+{
+	dwCurWeaponProcessingPlayer = ped;
+	return CPad__ProcessPlayerWeapon(thiz, ped);
+}
+
+uint32_t(*CPad__GetTarget)(uintptr_t thiz, int a2, int a3, int a4);
+uint32_t CPad__GetTarget_hook(uintptr_t thiz, int a2, int a3, int a4)
+{
+	if(!dwCurWeaponProcessingPlayer) return 0;
+	return *(uint8_t*)(*(uint32_t*)(dwCurWeaponProcessingPlayer + 1088) + 52) & 0b00001000;
+}
+
+uintptr_t(*CTaskSimplePlayerOnFoot__ProcessPlayerWeapon)(uintptr_t thiz, uintptr_t player_ped);
+uintptr_t CTaskSimplePlayerOnFoot__ProcessPlayerWeapon_hook(uintptr_t thiz, uintptr_t player_ped)
+{
+	dwCurWeaponProcessingPlayer = player_ped;
+	uintptr_t result;
+	if (dwCurPlayerActor && (byteCurPlayer != 0))
+	{
+		*(uint8_t*)(g_libGTASA + 0x8E864C) = byteCurPlayer;
+		result = CTaskSimplePlayerOnFoot__ProcessPlayerWeapon(thiz, dwCurPlayerActor);
+		*(uint8_t*)(g_libGTASA + 0x8E864C) = 0;
+	}
+	else
+	{
+		result = CTaskSimplePlayerOnFoot__ProcessPlayerWeapon(thiz, dwCurPlayerActor);
+	}
+	return result;
+}
+
+uint32_t ExecuteOriginalTaskUseGun(uintptr_t thiz, uintptr_t a2)
+{
+	uintptr_t v2;
+	uintptr_t v3;
+	int v4;
+	int v5;
+	int v6;
+	int result;
+	char v8;
+	
+	v2 = thiz;
+	v3 = a2;
+	v4 = *((uintptr_t*)thiz + 12);
+	v5 = *((uintptr_t*)a2 + 7 * *((unsigned char*)a2 + 1816) + 360);
+	v6 = reinterpret_cast<int(*)(uintptr_t)>(g_libGTASA + 0x434F24 + 1)(a2);
+	int weapon_info = reinterpret_cast<int(*)(int, int)>(g_libGTASA + 0x56BD60 + 1)(v5, v6);
+	if(v4 == weapon_info)
+	{
+		v8 = *((unsigned char*)v2 + 13);
+		if(*((unsigned char*)v2 + 13) & 1)
+		{
+			reinterpret_cast<int(*)(uintptr_t, uintptr_t, int)>(g_libGTASA + 0x46D4E4 + 1)(v2,v3,0);
+			v8 = *((unsigned char*)v2 + 13);
+		}
+		if(v8 & 2)
+		{
+			reinterpret_cast<int(*)(uintptr_t, uintptr_t, int)>(g_libGTASA + 0x46D4E4 + 1)(v2,v3,1);
+		}
+		
+		result = 0;
+		*((unsigned char*)v2 + 13) = 0;
+	}
+	else
+	{
+		result = 0;
+	}
+	return result;
+}
+
+uint32_t CPad__TaskUseGun(uintptr_t thiz, uintptr_t ped)
+{	
+	dwCurPlayerActor = ped;
+	byteCurPlayer = FindPlayerNumFromPedPtr(dwCurPlayerActor);
+	
+	uint32_t result = 0;
+	
+	if (dwCurPlayerActor &&
+		(byteCurPlayer != 0)) // not local player and local player's keys set.
+	{	
+		byteSavedCameraMode = *pbyteCameraMode;
+		*pbyteCameraMode = GameGetPlayerCameraMode(byteCurPlayer);
+		
+		/*Log("[2:Before] %d", *((uint16_t*)g_libGTASA + 0x8B0808 + 0x7B4));
+		
+		// save the second internal cammode, apply the context
+		wSavedCameraMode2 = *((uint16_t*)g_libGTASA + 0x8B0808 + 0x7B4);
+		*((uint16_t*)g_libGTASA + 0x8B0808 + 0x7B4) = GameGetPlayerCameraMode(byteCurPlayer);
+		if (*((uint16_t*)g_libGTASA + 0x8B0808 + 0x7B4) == 4) *((uint16_t*)g_libGTASA + 0x8B0808 + 0x7B4) = 0;
+		
+		Log("[2:After] %d | %d", *((uint16_t*)g_libGTASA + 0x8B0808 + 0x7B4), wSavedCameraMode2);*/
+		
+		// save the camera zoom factor, apply the context
+		GameStoreLocalPlayerCameraExtZoom();
+		GameSetRemotePlayerCameraExtZoom(byteCurPlayer);
+		
+		// aim switching
+		GameStoreLocalPlayerAim();
+		GameSetRemotePlayerAim(byteCurPlayer);
+		*(uint8_t*)(g_libGTASA + 0x008E864C) = byteCurPlayer;
+		
+		result = ((uint32_t(*)(uintptr_t, uintptr_t))(g_libGTASA + 0x0046D6AC + 1))(thiz, ped);
+		
+		// restore the camera modes, internal id and local player's aim
+		*pbyteCameraMode = byteSavedCameraMode;
+		//*((uint16_t*)g_libGTASA + 0x8B0808 + 0x7B4) = wSavedCameraMode2;
+
+		// remote the local player's camera zoom factor
+		GameSetLocalPlayerCameraExtZoom();
+
+		*(uint8_t*)(g_libGTASA + 0x008E864C) = 0;
+		GameSetLocalPlayerAim();
+	}
+	else
+	{
+		result = ((uint32_t(*)(uintptr_t, uintptr_t))(g_libGTASA + 0x0046D6AC + 1))(thiz, ped);
+	}
+	
+	return result;
+}
+
+uint32_t CPad__TaskProcess(uintptr_t thiz, uintptr_t ped, int unk, int unk1)
+{
+	dwCurPlayerActor = ped;
+	byteCurPlayer = FindPlayerNumFromPedPtr(dwCurPlayerActor);
+	uint8_t old = *(uint8_t*)(g_libGTASA + 0x008E864C);
+	*(uint8_t*)(g_libGTASA + 0x008E864C) = byteCurPlayer;
+
+	uint32_t result =  ((uint32_t(*)(uintptr_t, uintptr_t, int, int))(g_libGTASA + 0x004C2F7C + 1))(thiz, ped, unk, unk1);
+	*(uint8_t*)(g_libGTASA + 0x008E864C) = old;
+	return result;
+}
+
+// useless shit
+/*uint32_t (*CPedIntelligence__GetTaskDuck)(uintptr_t thiz, int a2);
+uint32_t CPedIntelligence__GetTaskDuck_hook(uintptr_t thiz, int a2)
+{
+	uint32_t result;
+	if(dwCurPlayerActor && (byteCurPlayer != 0))
+	{
+		result = CPedIntelligence__GetTaskDuck(thiz, a2);
+		if(!result && IsRemotePlayerDucking(byteCurPlayer) &&
+		IsRemotePlayerDuckingReset(byteCurPlayer) == 0)
+		{
+			SetRemotePlayerDuckingReset(byteCurPlayer, 1);
+		}
+	}
+	else
+	{
+		uint32_t result = CPedIntelligence__GetTaskDuck(thiz, a2);
+		if(result) SetLocalPlayerDucking(1);
+	}
+	return result;
+}*/
+
+int (*CPad__GetNitroFired)(uintptr_t thiz);
+int CPad__GetNitroFired_hook(uintptr_t thiz)
+{
+	if(dwCurPlayerActor && (byteCurPlayer != 0)) return 0;
+	return CPad__GetNitroFired(thiz);
+}
+
+int (*CPad__GetHydraulicJump)(uintptr_t thiz);
+int CPad__GetHydraulicJump_hook(uintptr_t thiz)
+{
+	if(dwCurPlayerActor && (byteCurPlayer != 0)) return 0;
+	return CPad__GetHydraulicJump(thiz);
+}
+
+int (*CPad__GetTurretLeft)(uintptr_t thiz);
+int CPad__GetTurretLeft_hook(uintptr_t thiz)
+{
+	if(dwCurPlayerActor && (byteCurPlayer != 0)) return 0;
+	return CPad__GetTurretLeft(thiz);
+}
+
+int (*CPad__GetTurretRight)(uintptr_t thiz);
+int CPad__GetTurretRight_hook(uintptr_t thiz)
+{
+	if(dwCurPlayerActor && (byteCurPlayer != 0)) return 0;
+	return CPad__GetTurretRight(thiz);
+}
+
 void HookCPad()
 {
 	memset(&LocalPlayerKeys, 0, sizeof(PAD_KEYS));
 
+	// Widget buttons
+	#ifdef RELEASE_BETA
+	SetUpHook(g_libGTASA+0x39D54C, (uintptr_t)CPad__GetNitroFired_hook, (uintptr_t*)&CPad__GetNitroFired);
+	SetUpHook(g_libGTASA+0x39D528, (uintptr_t)CPad__GetHydraulicJump_hook, (uintptr_t*)&CPad__GetHydraulicJump);
+	SetUpHook(g_libGTASA+0x39D344, (uintptr_t)CPad__GetTurretLeft_hook, (uintptr_t*)&CPad__GetTurretLeft);
+	SetUpHook(g_libGTASA+0x39D368, (uintptr_t)CPad__GetTurretRight_hook, (uintptr_t*)&CPad__GetTurretRight);
+	#endif
+
+	//SetUpHook(g_libGTASA+0x44DFB8, (uintptr_t)CPedIntelligence__GetTaskDuck_hook, (uintptr_t*)&CPedIntelligence__GetTaskDuck);
+	//SetUpHook(g_libGTASA+0x39E74C, (uintptr_t)CPad__GetDuck_hook, (uintptr_t*)&CPad__GetDuck);
 	// CPed::ProcessControl
 	SetUpHook(g_libGTASA+0x45A280, (uintptr_t)CPed__ProcessControl_hook, (uintptr_t*)&CPed__ProcessControl);
+	// CPlayerPed::UpdateCameraWeaponModes
+	//SetUpHook(g_libGTASA+0x45464C, (uintptr_t)CPlayerPed__UpdateCameraWeaponModes_hook, (uintptr_t*)&CPlayerPed__UpdateCameraWeaponModes);
+	// CTaskSimplePlayerOnFoot::ProcessPlayerWeapon
+	SetUpHook(g_libGTASA+0x4C1748, (uintptr_t)CTaskSimplePlayerOnFoot__ProcessPlayerWeapon_hook, (uintptr_t*)&CTaskSimplePlayerOnFoot__ProcessPlayerWeapon);
 	// all vehicles ProcessControl
 	InstallMethodHook(g_libGTASA+0x5CCA1C, (uintptr_t)AllVehicles__ProcessControl_hook); // CAutomobile::ProcessControl
 	InstallMethodHook(g_libGTASA+0x5CCD74, (uintptr_t)AllVehicles__ProcessControl_hook); // CBoat::ProcessControl
@@ -486,10 +768,14 @@ void HookCPad()
 	InstallMethodHook(g_libGTASA+0x5CCFB4, (uintptr_t)AllVehicles__ProcessControl_hook); // CMonsterTruck::ProcessControl
 	InstallMethodHook(g_libGTASA+0x5CD204, (uintptr_t)AllVehicles__ProcessControl_hook); // CQuadBike::ProcessControl
 	InstallMethodHook(g_libGTASA+0x5CD454, (uintptr_t)AllVehicles__ProcessControl_hook); // CTrain::ProcessControl
+	InstallMethodHook(g_libGTASA+0x5C8610, (uintptr_t)CPad__TaskUseGun);				 // CPad::TaskUseGun
+	//InstallMethodHook(g_libGTASA+0x5CC1D4, (uintptr_t)CPad__TaskProcess);  			     // CPad::TaskProcess
 
 	// lr/ud (onfoot)
 	SetUpHook(g_libGTASA+0x39D08C, (uintptr_t)CPad__GetPedWalkLeftRight_hook, (uintptr_t*)&CPad__GetPedWalkLeftRight);
 	SetUpHook(g_libGTASA+0x39D110, (uintptr_t)CPad__GetPedWalkUpDown_hook, (uintptr_t*)&CPad__GetPedWalkUpDown);
+
+	//SetUpHook(g_libGTASA + 0x)
 
 	// sprint/jump stuff
 	SetUpHook(g_libGTASA+0x39EAA4, (uintptr_t)CPad__GetSprint_hook, (uintptr_t*)&CPad__GetSprint);
@@ -503,6 +789,11 @@ void HookCPad()
 	SetUpHook(g_libGTASA+0x39EA4C, (uintptr_t)CPad__SwimJumpJustDown_hook, (uintptr_t*)&CPad__SwimJumpJustDown);
 
 	SetUpHook(g_libGTASA+0x39DD9C, (uintptr_t)CPad__MeleeAttackJustDown_hook, (uintptr_t*)&CPad__MeleeAttackJustDown);
+
+	SetUpHook(g_libGTASA+0x39E038, (uintptr_t)CPad__GetWeapon_hook, (uintptr_t*)&CPad__GetWeapon);
+	SetUpHook(g_libGTASA+0x39E498, (uintptr_t)CPad__GetEnterTargeting_hook, (uintptr_t*)&CPad__GetEnterTargeting);
+	SetUpHook(g_libGTASA+0x39E418, (uintptr_t)CPad__GetTarget_hook, (uintptr_t*)&CPad__GetTarget);
+
 	SetUpHook(g_libGTASA+0x39E7B0, (uintptr_t)CPad__DuckJustDown_hook, (uintptr_t*)&CPad__DuckJustDown);
 	SetUpHook(g_libGTASA+0x39DB50, (uintptr_t)CPad__GetBlock_hook, (uintptr_t*)&CPad__GetBlock);
 

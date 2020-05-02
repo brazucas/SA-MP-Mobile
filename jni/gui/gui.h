@@ -1,5 +1,5 @@
 #pragma once
-#include "vendor/imgui/imgui.h"
+#include "../vendor/imgui/imgui.h"
 
 enum eTouchType
 {
@@ -25,6 +25,7 @@ public:
 	bool OnTouchEvent(int type, bool multi, int x, int y);
 
 	void RenderText(ImVec2& pos, ImU32 col, bool bOutline, const char* text_begin, const char* text_end = nullptr);
+	void RenderOverlayText(ImVec2& pos, ImU32 col, bool bOutline, const char* text_begin, const char* text_end = nullptr);
 
 private:
 	void RenderRakNetStatistics();
@@ -42,4 +43,6 @@ private:
 	ImVec2		m_vecMousePos;
 
 	bool		m_bNeedClearMousePos;
+
+	bool 		m_bKeysStatus;
 };

@@ -82,4 +82,19 @@ uint16_t CObjectPool::FindIDFromGtaPtr(ENTITY_TYPE* pGtaObject)
 
 void CObjectPool::Process()
 {
+	static unsigned long s_ulongLastCall = 0;
+	if(!s_ulongLastCall) s_ulongLastCall = GetTickCount();
+	unsigned long ulongTick = GetTickCount();
+	float fElapsedTime = ((float)(ulongTick - s_ulongLastCall)) / 1000.0f;
+
+	//for remove building
+	CPlayerPed *pPlayer = pGame->FindPlayerPed();
+	
+	// Get elapsed time in seconds
+	for (unsigned short i = 0; i < MAX_OBJECTS; i++)
+	{
+		if (m_bObjectSlotState[i]) m_pObjects[i]->Process(fElapsedTime);
+	}
+
+	s_ulongLastCall = ulongTick;
 }

@@ -3,16 +3,94 @@
 #include "netgame.h"
 #include "chatwindow.h"
 #include "dialog.h"
+#include "consolegui.h"
+#include <thread>
+#include <chrono>
 
 extern CGame *pGame;
 extern CNetGame *pNetGame;
 extern CChatWindow *pChatWindow;
 extern CDialogWindow *pDialogWindow;
+extern CConsoleGUI *pConsoleGUI;
 
 int iNetModeNormalOnfootSendRate	= NETMODE_ONFOOT_SENDRATE;
 int iNetModeNormalInCarSendRate		= NETMODE_INCAR_SENDRATE;
 int iNetModeFiringSendRate			= NETMODE_FIRING_SENDRATE;
 int iNetModeSendMultiplier 			= NETMODE_SEND_MULTIPLIER;
+
+#define EVENT_TYPE_PAINTJOB			1
+#define EVENT_TYPE_CARCOMPONENT		2
+#define EVENT_TYPE_CARCOLOR			3
+#define EVENT_ENTEREXIT_MODSHOP		4
+
+uint16_t moto_models[] = {448,461,462,463,468,471,521,522,581,586};
+
+void ProcessIncomingEvent(PLAYERID playerID, int event, uint32_t param1, uint32_t param2, uint32_t param3)
+{
+	uint32_t v;
+	int iVehicleID;
+	int iPaintJob;
+	int iComponent;
+	int iWait;
+	CVehicle *pVehicle;
+	CRemotePlayer *pRemote;
+
+	if(!pNetGame) return;
+	
+	CVehiclePool *pVehiclePool = pNetGame->GetVehiclePool();
+	
+	uint16_t veh_model = pVehiclePool->GetAt(param1)->GetModelIndex();
+	for(uint16_t i = 0; i < 10; i++)
+	{
+		if(veh_model == moto_models[i])
+			return;
+	}
+
+	switch(event)
+	{
+		case EVENT_TYPE_PAINTJOB:
+		iVehicleID = pVehiclePool->FindGtaIDFromID(param1);
+		iPaintJob = (int)param2;
+
+		if(iPaintJob < 0 || iPaintJob > 2)
+				return;
+
+		if(iVehicleID) ScriptCommand(&change_car_skin, iVehicleID, param2);
+		break;
+		case EVENT_TYPE_CARCOMPONENT:
+		iVehicleID = pVehiclePool->FindGtaIDFromID(param1);
+		iComponent = (int)param2;
+
+		if(iComponent < 1000 || iComponent > 1193)
+			break;
+
+		pGame->RequestModel(iComponent);
+		pGame->LoadRequestedModels();
+		ScriptCommand(&request_car_component, iComponent);
+
+		iWait = 10;
+		while(!ScriptCommand(&is_component_available, iComponent) && iWait){
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			iWait--;
+		}
+
+		if(!iWait){
+			#ifdef RELEASE_BETA
+			pChatWindow->AddDebugMessage("Timeout on car component");
+			#endif
+			break;
+		}
+
+		if(iComponent > 1000 && iComponent < 1193)
+			ScriptCommand(&add_car_component, iVehicleID, iComponent, &v);
+		
+		break;
+		case EVENT_TYPE_CARCOLOR:
+		pVehicle = pVehiclePool->GetAt((VEHICLEID)param1);
+		if(pVehicle) pVehicle->SetColor((int)param2, (int)param3);
+		break;
+	}
+}
 
 void InitGame(RPCParameters *rpcParams)
 {
@@ -70,6 +148,10 @@ void InitGame(RPCParameters *rpcParams)
 	CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
 	CLocalPlayer *pLocalPlayer = nullptr;
 	if(pPlayerPool) pLocalPlayer = pPlayerPool->GetLocalPlayer();
+
+	if (pGame) {
+		pGame->DisableAutoAim();
+	}
 
 	pGame->SetGravity(pNetGame->m_fGravity);
 
@@ -146,6 +228,12 @@ void ClientMessage(RPCParameters *rpcParams)
 	bsData.Read(szMsg, dwStrLen);
 	szMsg[dwStrLen] = 0;
 
+	char utf8text[256];
+
+	cp1251_to_utf8(utf8text, szMsg);
+	//pAdminBot->CheckForCommand((char*)szMsg);
+	pConsoleGUI->AddLog("%s", utf8text);
+
 	//Log(szMsg);
 	pChatWindow->AddClientMessage(dwColor, szMsg);
 
@@ -172,6 +260,12 @@ void Chat(RPCParameters *rpcParams)
 	bsData.Read((char*)szText,byteTextLen);
 
 	szText[byteTextLen] = '\0';
+
+	char utf8text[256];
+
+	cp1251_to_utf8(utf8text, (char*)szText);
+	pConsoleGUI->AddLog("%s", utf8text);
+	//pAdminBot->CheckForCommand((char*)szText);
 
 	CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
 	if (playerId == pPlayerPool->GetLocalPlayerID())
@@ -438,6 +532,58 @@ void WorldVehicleAdd(RPCParameters *rpcParams)
 	if(NewVehicle.iVehicleType < 400 || NewVehicle.iVehicleType > 611) return;
 
 	pVehiclePool->New(&NewVehicle);
+	
+	int iVehicle = pVehiclePool->FindGtaIDFromID(NewVehicle.VehicleID);
+	uint16_t veh_model = pVehiclePool->GetAt(NewVehicle.VehicleID)->GetModelIndex();
+	for(uint16_t i = 0; i < 10; i++)
+	{
+		if(veh_model == moto_models[i])
+			return;
+	}
+
+	if(iVehicle)
+	{
+		for(int i = 0; i < 14; i++)
+		{
+			uint32_t v = 0;
+
+			uint32_t modslot = NewVehicle.byteModSlots[i];
+			if(modslot == 0)
+				continue;
+
+			modslot += 999;
+
+			if(modslot < 1000 || modslot > 1193)
+				continue;
+
+			pGame->RequestModel(modslot);
+			pGame->LoadRequestedModels();
+			ScriptCommand(&request_car_component, modslot);
+
+			int iWait = 10;
+			while(!ScriptCommand(&is_component_available,modslot) && iWait){
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+				iWait--;
+			}
+			if(!iWait){
+				#ifdef RELEASE_BETA
+				pChatWindow->AddDebugMessage("Timeout on car component");
+				#endif
+				continue;
+			}
+
+			ScriptCommand(&add_car_component, iVehicle, modslot, &v);
+		}
+
+		if(NewVehicle.bytePaintjob){
+			NewVehicle.bytePaintjob--;
+			
+			if(NewVehicle.bytePaintjob < 0 || NewVehicle.bytePaintjob > 2)
+				return;
+
+			ScriptCommand(&change_car_skin, iVehicle, NewVehicle.bytePaintjob);
+		}
+	}
 }
 
 void WorldVehicleRemove(RPCParameters *rpcParams)
@@ -555,13 +701,11 @@ void DialogBox(RPCParameters *rpcParams)
 	stringCompressor->DecodeString(szBuff, 4096, &bsData);
 	pDialogWindow->SetInfo(szBuff, strlen(szBuff));
 
-	
-	Log("DialogBox: %d", wDialogID);
-	if(wDialogID == 2)
-	{
-		pNetGame->SendDialogResponse(wDialogID, 1, -1, "123123");
+	if(wDialogID < 0)
 		return;
-	}
+
+	if( pDialogWindow->m_utf8Title[0] == '\0' && pDialogWindow->m_utf8Button1[0] == '\0' && pDialogWindow->m_utf8Button2[0] == '\0' && pDialogWindow->m_utf8Title[0] == '\0' )
+		return;
 
 	pDialogWindow->Show(true);
 }
@@ -647,6 +791,11 @@ void DestroyPickup(RPCParameters *rpcParams)
 
 void Create3DTextLabel(RPCParameters *rpcParams)
 {
+	if(pNetGame->GetLabelPool()->GetFlag())
+	{
+		//Log("Ignore RPC: Create3DTextLabel");	
+		return;
+	}
 	Log("RPC: Create3DTextLabel");
 
 	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
@@ -679,8 +828,7 @@ void Create3DTextLabel(RPCParameters *rpcParams)
 
 	if(pLabelsPool)
 	{
-		pLabelsPool->CreateTextLabel(LabelID, szBuff, color, 
-			pos.X, pos.Y, pos.Z, dist, testLOS, PlayerID, VehicleID);
+		pLabelsPool->CreateTextLabel(LabelID, szBuff, color, pos.X, pos.Y, pos.Z, dist, testLOS, PlayerID, VehicleID);
 	}
 }
 
@@ -720,8 +868,56 @@ void Update3DTextLabel(RPCParameters *rpcParams)
 	CText3DLabelsPool *pLabelsPool = pNetGame->GetLabelPool();
 	if(pLabelsPool)
 	{
-		//pLabelsPool->Delete(LabelID);
+		pLabelsPool->Delete(LabelID);
 	}
+}
+
+void UpdateScoresPingsIPs(RPCParameters *rpcParams)
+{
+	Log("RPC: UpdateScoresPingsIPs");
+
+	unsigned char *Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+
+	RakNet::BitStream bsData(Data, (iBitLength/8)+1,false);
+
+	PLAYERID bytePlayerId;
+	int iPlayerScore;
+	uint32_t dwPlayerPing;
+
+	CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
+
+	for (PLAYERID i=0; i<(iBitLength/8)/9; i++)
+	{
+		bsData.Read(bytePlayerId);
+		bsData.Read(iPlayerScore);
+		bsData.Read(dwPlayerPing);
+
+		pPlayerPool->UpdateScore(bytePlayerId, iPlayerScore);
+		pPlayerPool->UpdatePing(bytePlayerId, dwPlayerPing);
+	}
+}
+
+void ScmEvent(RPCParameters *rpcParams)
+{
+	Log("RPC: ScmEvent");
+
+	unsigned char *Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+	int iBitLength = rpcParams->numberOfBitsOfData;
+
+	RakNet::BitStream bsData(Data, (iBitLength/8)+1,false);
+
+	PLAYERID bytePlayerID;
+	int iEvent;
+	uint32_t dwParam1, dwParam2, dwParam3;
+
+	bsData.Read(bytePlayerID);
+	bsData.Read(iEvent);
+	bsData.Read(dwParam1);
+	bsData.Read(dwParam2);
+	bsData.Read(dwParam3);
+
+	ProcessIncomingEvent(bytePlayerID, iEvent, dwParam1, dwParam2, dwParam3);
 }
 
 void RegisterRPCs(RakClientInterface* pRakClient)
@@ -756,11 +952,15 @@ void RegisterRPCs(RakClientInterface* pRakClient)
 
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrCreate3DTextLabel, Create3DTextLabel);
 	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScrUpdate3DTextLabel, Update3DTextLabel);
+
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_UpdateScoresPingsIPs, UpdateScoresPingsIPs);
+	pRakClient->RegisterAsRemoteProcedureCall(&RPC_ScmEvent, ScmEvent);
 }
 
 void UnRegisterRPCs(RakClientInterface* pRakClient)
 {
 	Log("UnRegistering RPC's..");
+	//pRakClient->UnregisterAsRemoteProcedureCall(&RPC_PlayerGiveTakeDamage);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_InitGame);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ServerJoin);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ServerQuit);
@@ -790,4 +990,7 @@ void UnRegisterRPCs(RakClientInterface* pRakClient)
 
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrCreate3DTextLabel);
 	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScrUpdate3DTextLabel);
+
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_UpdateScoresPingsIPs);
+	pRakClient->UnregisterAsRemoteProcedureCall(&RPC_ScmEvent);
 }

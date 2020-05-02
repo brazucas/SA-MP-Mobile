@@ -1,7 +1,7 @@
 #include "../main.h"
 #include "game.h"
-#include "net/netgame.h"
-#include "chatwindow.h"
+#include "../net/netgame.h"
+#include "../chatwindow.h"
 
 #include <cmath>
 
@@ -9,6 +9,21 @@ extern CGame *pGame;
 extern CNetGame *pNetGame;
 extern CChatWindow *pChatWindow;
 
+
+void CEntity::SetCollision(bool st)
+{
+	if(m_pEntity && m_pEntity->vtable != g_libGTASA+0x5C7358)
+	{
+		if(st)
+		{
+			m_pEntity->dwProcessingFlags |= 1;
+		}
+		else
+		{
+			m_pEntity->dwProcessingFlags &= 0xFFFFFFFE;
+		}
+	}
+}
 // 0.3.7
 void CEntity::GetMatrix(PMATRIX4X4 Matrix)
 {

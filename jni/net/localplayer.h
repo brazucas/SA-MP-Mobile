@@ -32,6 +32,14 @@
 // added in 0.3x
 #define SPECIAL_ACTION_CARRY			25
 
+#define BULLET_HIT_TYPE_NONE            0
+#define BULLET_HIT_TYPE_PLAYER          1
+#define BULLET_HIT_TYPE_VEHICLE         2
+#define BULLET_HIT_TYPE_OBJECT          3
+#define BULLET_HIT_TYPE_PLAYER_OBJECT   4
+
+typedef unsigned short RW_OBJECTID;
+
 typedef struct _PLAYER_SPAWN_INFO
 {
 	uint8_t byteTeam;
@@ -101,16 +109,6 @@ enum eWeaponState
 	WS_RELOADING = 3,
 };
 
-typedef struct _AIM_SYNC_DATA
-{
-	uint8_t byteCamMode;
-	VECTOR vecAimf1;
-	VECTOR vecAimPos;
-	float fAimZ;
-	uint8_t byteCamExtZoom : 6;		// 0-63 normalized
-	uint8_t byteWeaponState : 2;	// see eWeaponState
-	uint8_t byteAspectRatio;
-} AIM_SYNC_DATA;
 
 typedef struct _SPECTATOR_SYNC_DATA
 {
@@ -119,6 +117,11 @@ typedef struct _SPECTATOR_SYNC_DATA
 	uint16_t wKeys;
 	VECTOR vecPos;
 } SPECTATOR_SYNC_DATA;
+
+typedef struct _UNOCCUPIED_SYNC_DATA
+{
+
+} UNOCCUPIED_SYNC_DATA;
 
 class CLocalPlayer
 {
@@ -129,7 +132,7 @@ public:
 	void ResetAllSyncAttributes();
 
 	bool Process();
-
+	void SendBulletSyncData(PLAYERID byteHitID, uint8_t byteHitType, VECTOR vecHitPos);
 	void SendWastedNotification();
 
 	void HandleClassSelection();
@@ -138,7 +141,6 @@ public:
 	void SendNextClass();
 	void SendPrevClass();
 	void SendSpawn();
-
 	void ApplySpecialAction(uint8_t byteSpecialAction);
 
 	uint32_t GetPlayerColor();
@@ -146,6 +148,7 @@ public:
 	void RequestClass(int iClass);
 	void RequestSpawn();
 	bool HandlePassengerEntry();
+	bool HandlePassengerEntryEx();
 	void UpdateSurfing();
 	
 	void SendEnterVehicleNotification(VEHICLEID VehicleID, bool bPassenger);
@@ -171,7 +174,13 @@ public:
 	void SendInCarFullSyncData();
 	void SendPassengerFullSyncData();
 	void SendAimSyncData();
+	
+	void GiveTakeDamage(bool bGiveOrTake, uint16_t wPlayerID, float damage_amount, uint32_t weapon_id, uint32_t bodypart);
 
+	void CheckWeapons();
+
+	uint8_t GetSpecialAction();
+	uint32_t GetPlayerColorAsARGB();
 public:
 	bool				m_bWaitingForSpawnRequestReply;
 
@@ -192,6 +201,7 @@ private:
 	bool				m_bInRCMode;
 
 	uint32_t			m_dwPassengerEnterExit;
+	uint32_t			m_dwLastHeadMoveUpdate;
 
 	PLAYER_SPAWN_INFO 	m_SpawnInfo;
 	ONFOOT_SYNC_DATA 	m_OnFootData;
@@ -209,4 +219,8 @@ private:
 	uint32_t 			m_dwLastUpdateOnFootData;
 	uint32_t			m_dwLastUpdateInCarData;
 	uint32_t 			m_dwLastUpdatePassengerData;
+	uint32_t 			m_dwLastAimSendTick;
+
+	uint8_t 			m_byteLastWeapon[13];
+	uint32_t			m_dwLastAmmo[13];
 };

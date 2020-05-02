@@ -37,6 +37,9 @@ public:
 	CObject* NewObject(int iModel, float fPosX, float fPosY, float fPosZ, VECTOR vecRot, float fDrawDistance);
 	uint32_t CreatePickup(int iModel, int iType, float fX, float fY, float fZ, int *unk);
 
+	//
+	void DisableAutoAim();
+
 	float FindGroundZForCoord(float x, float y, float z);
 	// 0.3.7
 	uint8_t GetActiveInterior();
@@ -108,6 +111,15 @@ public:
 	void ResetLocalMoney();
 
 	void DrawGangZone(float fPos[], uint32_t dwColor);
+
+	// Additional interesting functions
+	void DisplayFPS();
+
+	int GetScreenWidth();
+	int GetScreenHeight();
+
+	bool IsGamePaused();
+	bool IsPlayingGame();
 
 private:
 	CCamera* 		m_pGameCamera;

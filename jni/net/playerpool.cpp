@@ -87,3 +87,38 @@ PLAYERID CPlayerPool::FindRemotePlayerIDFromGtaPtr(PED_TYPE * pActor)
 
 	return INVALID_PLAYER_ID;	
 }
+
+PLAYERID CPlayerPool::GetCount()
+{
+	PLAYERID byteCount = 0;
+	for(PLAYERID p = 0; p < MAX_PLAYERS; p++){
+		if(GetSlotState(p)) byteCount++;
+	}
+	return byteCount;
+}
+
+void CPlayerPool::UpdateScore(PLAYERID playerId, int iScore)
+{
+	if(playerId == m_LocalPlayerID)
+	{
+		m_iLocalPlayerScore = iScore;
+	}
+	else
+	{
+		if(playerId > MAX_PLAYERS-1){return;}
+		m_iPlayerScores[playerId] = iScore;
+	}
+}
+
+void CPlayerPool::UpdatePing(PLAYERID playerId, uint32_t dwPing)
+{
+	if(playerId == m_LocalPlayerID)
+	{
+		m_dwLocalPlayerPing = dwPing;
+	}
+	else
+	{
+		if(playerId > MAX_PLAYERS-1){return;}
+		m_dwPlayerPings[playerId] = dwPing;
+	}
+}

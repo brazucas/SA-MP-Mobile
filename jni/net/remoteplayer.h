@@ -40,6 +40,7 @@ public:
 	}
 	uint8_t GetState() { return m_byteState; };
 
+	void StoreBulletSyncData(BULLET_SYNC* blSync);
 	void SetID(PLAYERID playerId) { m_PlayerID = playerId; }
 	PLAYERID GetID() { return m_PlayerID; }
 
@@ -61,6 +62,7 @@ public:
 	}
 	void RemoveFromVehicle();
 
+	void UpdateAimFromSyncData(AIM_SYNC_DATA *paimSync);
 	void StoreOnFootFullSyncData(ONFOOT_SYNC_DATA *pofSync, uint32_t time);
 	void StoreInCarFullSyncData(INCAR_SYNC_DATA *picSync, uint32_t time);
 	void StorePassengerFullSyncData(PASSENGER_SYNC_DATA *psSync);
@@ -83,6 +85,10 @@ public:
 	void ShowGlobalMarker(short sX, short sY, short sZ);
 	void HideGlobalMarker();
 
+	void SetSpecialAction(uint8_t special_action);
+	uint32_t GetPlayerColorAsARGB();
+	void ProcessSpecialActions(unsigned char byteSpecialAction);
+
 public:
 	bool				m_bShowNameTag;
 	float 				m_fReportedHealth;
@@ -102,10 +108,13 @@ private:
 	uint8_t				m_byteUpdateFromNetwork;
 	uint32_t			m_dwLastRecvTick;
 	uint32_t			m_dwUnkTime;
+	uint32_t			m_dwLastHeadMoveUpdate;
 
 	ONFOOT_SYNC_DATA	m_ofSync;
 	INCAR_SYNC_DATA		m_icSync;
 	PASSENGER_SYNC_DATA m_psSync;
+
+	uint8_t m_byteWeaponShotID;
 
 	VECTOR 				m_vecPosOffset;
 

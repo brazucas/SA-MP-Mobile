@@ -4,8 +4,10 @@
 #include <string>
 #include <vector>
 #include <list>
+#include <unordered_map>
 #include <unistd.h>
-#include <iconv.h>
+
+#define RELEASE_BETA
 
 #define SAMP_VERSION	"0.3.7"
 #define PORT_VERSION	"BRZ Launcher v0.1"

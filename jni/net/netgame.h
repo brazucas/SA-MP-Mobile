@@ -1,10 +1,10 @@
 #pragma once
 
 // raknet
-#include "vendor/RakNet/RakClientInterface.h"
-#include "vendor/RakNet/RakNetworkFactory.h"
-#include "vendor/RakNet/PacketEnumerations.h"
-#include "vendor/RakNet/StringCompressor.h"
+#include "../vendor/RakNet/RakClientInterface.h"
+#include "../vendor/RakNet/RakNetworkFactory.h"
+#include "../vendor/RakNet/PacketEnumerations.h"
+#include "../vendor/RakNet/StringCompressor.h"
 
 #include "localplayer.h"
 #include "remoteplayer.h"
@@ -14,6 +14,7 @@
 #include "objectpool.h"
 #include "pickuppool.h"
 #include "textlabelpool.h"
+#include "textdrawpool.h"
 
 #define GAMESTATE_WAIT_CONNECT	9
 #define GAMESTATE_CONNECTING	13
@@ -46,6 +47,7 @@ public:
 	CGangZonePool* GetGangZonePool() { return m_pGangZonePool; }
 	CText3DLabelsPool* GetLabelPool() { return m_pLabelPool; }
 	RakClientInterface* GetRakClient() { return m_pRakClient; };
+	CTextDrawPool* GetTextDrawPool() { return m_pTextDrawPool; }
 
 	int GetGameState() { return m_iGameState; }
 	void SetGameState(int iGameState) { m_iGameState = iGameState; }
@@ -64,6 +66,10 @@ public:
 	void SetMapIcon(uint8_t byteIndex, float fX, float fY, float fZ, uint8_t byteIcon, int iColor, int style);
 	void DisableMapIcon(uint8_t byteIndex);
 
+	void UpdatePlayerScoresAndPings();
+
+	bool GetHeadMoveState();
+
 private:
 	RakClientInterface* m_pRakClient;
 	CPlayerPool*		m_pPlayerPool;
@@ -72,6 +78,7 @@ private:
 	CPickupPool* 		m_pPickupPool;
 	CGangZonePool*		m_pGangZonePool;
 	CText3DLabelsPool*	m_pLabelPool;
+	CTextDrawPool*		m_pTextDrawPool;
 	int					m_iGameState;
 	uint32_t			m_dwLastConnectAttempt;
 
@@ -86,6 +93,8 @@ private:
 	void Packet_VehicleSync(Packet* pkt);
 	void Packet_PassengerSync(Packet* pkt);
 	void Packet_MarkersSync(Packet* pkt);
+	void Packet_AimSync(Packet* p);
+	void Packet_BulletSync(Packet* pkt);
 
 public:
 	char m_szHostName[0xFF];
@@ -95,6 +104,7 @@ public:
 	bool		m_bZoneNames;
 	bool		m_bUseCJWalk;
 	bool		m_bAllowWeapons;
+	bool		m_bHeadMove;
 	bool		m_bLimitGlobalChatRadius;
 	float		m_fGlobalChatRadius;
 	float 		m_fNameTagDrawDistance;

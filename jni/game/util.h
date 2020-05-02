@@ -27,3 +27,10 @@ void SetScissorRect(void* pRect);
 float DegToRad(float fDegrees);
 // 0.3.7
 float FloatOffset(float f1, float f2);
+
+bool IsPointInRect(float x, float y, RECT* rect);
+
+/// kek
+void ProjectMatrix(VECTOR* vecOut, MATRIX4X4* mat, VECTOR *vecPos);
+void RwMatrixRotate(MATRIX4X4 *mat, int axis, float angle);
+void RwMatrixScale(MATRIX4X4 *mat, VECTOR *vecScale);

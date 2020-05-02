@@ -5,11 +5,19 @@
 #include "settings.h"
 #include "game/game.h"
 #include "net/netgame.h"
+#include "dialog.h"
+
+uint32_t MAX_CHAT_MESSAGES = 40; // 8
 
 extern CGUI *pGUI;
 extern CKeyBoard *pKeyBoard;
 extern CSettings *pSettings;
 extern CNetGame *pNetGame;
+extern CAMERA_AIM * pcaInternalAim;
+extern CGame * pGame;
+extern CDialogWindow *pDialogWindow;
+
+std::unordered_map<std::string, CMDPROC> m_mapCmds;
 
 void ChatWindowInputHandler(const char* str)
 {
@@ -17,11 +25,48 @@ void ChatWindowInputHandler(const char* str)
 	if(!pNetGame) return;
 
 	if(*str == '/')
-		pNetGame->SendChatCommand(str);
+	{
+		char *szCmdEndPos = (char*)str + 1;
+		while(*szCmdEndPos && *szCmdEndPos != ' ') szCmdEndPos++;
+		if(*szCmdEndPos == '\0') {
+			std::unordered_map<std::string, CMDPROC>::iterator cmd = m_mapCmds.find(str + 1);
+			if(cmd != m_mapCmds.end())
+			{
+				cmd->second("");
+			}
+			else
+			{
+				if(pNetGame)
+				{
+					pNetGame->SendChatCommand(str);
+				}
+			}
+		} else {
+			char szCopiedBuffer[256];
+			strcpy(szCopiedBuffer, str);
+
+			*szCmdEndPos = '\0';
+			szCmdEndPos++;
+
+			std::unordered_map<std::string, CMDPROC>::iterator cmd = m_mapCmds.find(str + 1);
+			if(cmd != m_mapCmds.end())
+			{
+				cmd->second(szCmdEndPos);
+			}
+			else
+			{
+				if(pNetGame)
+				{
+					pNetGame->SendChatCommand(szCopiedBuffer);
+				}
+			}
+		}
+	}
 	else
 		pNetGame->SendChatMessage(str);
 	return;
 }
+
 
 CChatWindow::CChatWindow()
 {
@@ -30,80 +75,186 @@ CChatWindow::CChatWindow()
 	m_fChatPosY = pGUI->ScaleY( pSettings->Get().fChatPosY );
 	m_fChatSizeX = pGUI->ScaleX( pSettings->Get().fChatSizeX );
 	m_fChatSizeY = pGUI->ScaleY( pSettings->Get().fChatSizeY );
-	m_iMaxMessages = pSettings->Get().iChatMaxMessages;
+	m_iMaxMessages = pSettings->Get().iChatMaxMessages; 
 	Log("Chat pos: %f, %f, size: %f, %f", m_fChatPosX, m_fChatPosY, m_fChatSizeX, m_fChatSizeY);
-
 	m_dwTextColor = 0xFFFFFFFF;
 	m_dwInfoColor = 0x00C8C8FF;
 	m_dwDebugColor = 0xBEBEBEFF;
+
+	MAX_CHAT_MESSAGES = m_iMaxMessages*5;
+
+	m_bIsOpened = false;
+	m_iOffsetY = 0;
 }
 
 CChatWindow::~CChatWindow()
 {
+	m_mapCmds.clear();
+}
+
+bool CChatWindow::CheckScrollBar(int x, int y)
+{
+	float size = pGUI->GetFontSize()*m_iMaxMessages;
+	float scrollBarSize = m_ChatWindowEntries.size() * (MAX_CHAT_MESSAGES/m_iMaxMessages);
+
+	if ( m_bIsOpened && x >= m_fChatPosX-pGUI->ScaleX(40.0f) && x <= m_fChatPosX-pGUI->ScaleX(3.0f) &&
+		y >= m_fChatPosY + pGUI->ScaleY(scrollBarSize) + m_iOffsetY && y <= m_fChatPosY + size + m_iOffsetY )
+	{
+		bSwipeScroll = true;
+		//m_bIsOpened = true;
+		return true;
+	}
+	return false;
+}
+
+void CChatWindow::OnExitFromInput()
+{ 
+	m_bIsOpened = false;
+	bSwipeScroll = false;
+
 }
 
 bool CChatWindow::OnTouchEvent(int type, bool multi, int x, int y)
 {
 	static bool bWannaOpenChat = false;
 
+	float size = pGUI->GetFontSize()*m_iMaxMessages;
+	float scrollBarSize = m_ChatWindowEntries.size() * (MAX_CHAT_MESSAGES/m_iMaxMessages);
+
 	switch(type)
 	{
 		case TOUCH_PUSH:
-			if (x >= m_fChatPosX && x <= m_fChatPosX + m_fChatSizeX &&
+			if (m_bIsOpened && x >= m_fChatPosX-pGUI->ScaleX(40.0f) && x <= m_fChatPosX-pGUI->ScaleX(3.0f) &&
+				y >= m_fChatPosY + pGUI->ScaleY(scrollBarSize) + m_iOffsetY && 
+				y <= m_fChatPosY + size + m_iOffsetY )
+			{
+				bSwipeScroll = true;
+				return true;
+			}
+			if(x >= m_fChatPosX && x <= m_fChatPosX + m_fChatSizeX &&
 				y >= m_fChatPosY && y <= m_fChatPosY + m_fChatSizeY)
 				bWannaOpenChat = true;
 		break;
 
 		case TOUCH_POP:
+			if (m_bIsOpened && bSwipeScroll)
+			{
+				bSwipeScroll = false;
+				return true;
+			}
 			if(bWannaOpenChat &&
 				x >= m_fChatPosX && x <= m_fChatPosX + m_fChatSizeX &&
 				y >= m_fChatPosY && y <= m_fChatPosY + m_fChatSizeY)
 			{
-				pKeyBoard->Open(&ChatWindowInputHandler);
+				if(!(pDialogWindow->m_bIsActive == true && pDialogWindow->m_byteDialogStyle == DIALOG_STYLE_LIST)) 
+				{
+					m_bIsOpened = true;
+					pKeyBoard->Open(&ChatWindowInputHandler);
+				}
 			}
 			bWannaOpenChat = false;
 		break;
 
 		case TOUCH_MOVE:
+			if (m_bIsOpened && bSwipeScroll)
+			{
+				if(m_iLastPosY > y)
+				{
+					if( m_fChatPosY + pGUI->ScaleY(scrollBarSize) + m_iOffsetY > m_fChatPosY )
+						m_iOffsetY -= 3;
+				}
+				if(m_iLastPosY < y)
+				{
+					if( m_fChatPosY + size + m_iOffsetY <= m_fChatPosY + size )
+						m_iOffsetY += 3;
+				}
+			
+				m_iLastPosY = y;
+				return false;
+			}
 		break;
 	}
 
 	return true;
 }
 
+
 void CChatWindow::Render()
 {
 	if(pSettings->Get().bDebug)
 	{
-		ImGui::GetOverlayDrawList()->AddRect(
+		ImGui::GetBackgroundDrawList()->AddRect(
 			ImVec2(m_fChatPosX, m_fChatPosY), 
 			ImVec2(	m_fChatPosX + m_fChatSizeX, m_fChatPosY + m_fChatSizeY), 
 			IM_COL32_BLACK);
 	}
 
-	ImVec2 pos = ImVec2(m_fChatPosX, m_fChatPosY);
+	float size = pGUI->GetFontSize()*m_iMaxMessages; 
+	ImVec2 pos = ImVec2(m_fChatPosX, m_fChatPosY+size-pGUI->GetFontSize());
+	float scrollBarSize = m_ChatWindowEntries.size() * (MAX_CHAT_MESSAGES/m_iMaxMessages);
 
-	for(auto entry : m_ChatWindowEntries)
+	if(m_bIsOpened)
 	{
-		switch(entry.eType)
+		if(m_ChatWindowEntries.size() > m_iMaxMessages)
+		{
+			ImGui::GetOverlayDrawList()->AddRectFilled(
+				ImVec2(m_fChatPosX-pGUI->ScaleX(40.0f + pSettings->Get().iFontOutline), m_fChatPosY + size + m_iOffsetY + pSettings->Get().iFontOutline), // 
+				ImVec2(m_fChatPosX-pGUI->ScaleX(3.0f - pSettings->Get().iFontOutline), 
+				m_fChatPosY + pGUI->ScaleY(scrollBarSize) + m_iOffsetY - pSettings->Get().iFontOutline), // m_iOffsetY
+				0xB0000000
+			);
+			ImGui::GetOverlayDrawList()->AddRectFilled(
+				ImVec2(m_fChatPosX-pGUI->ScaleX(40.0f), m_fChatPosY + size + m_iOffsetY), // 
+				ImVec2(m_fChatPosX-pGUI->ScaleX(3.0f), 
+				m_fChatPosY + pGUI->ScaleY(scrollBarSize) + m_iOffsetY), // m_iOffsetY
+				0xFF3291FF
+			);
+		}
+	}
+	float scrollbarSize = (m_fChatPosY + size + m_iOffsetY) - (m_fChatPosY + pGUI->ScaleY(scrollBarSize) + m_iOffsetY) ;
+	float scroll = size/scrollbarSize;
+	
+	int counter = -1;
+	int counterEx = 0;
+
+	for (std::list<CHAT_WINDOW_ENTRY>::iterator entry = m_ChatWindowEntries.end(); entry != m_ChatWindowEntries.begin(); entry--)
+	{
+		//
+		counter++;
+		if( -(m_iOffsetY/scroll) > counter && m_iOffsetY/scroll < 0 )
+		{
+			continue;
+		}
+
+		counterEx++;
+		if(counterEx > m_iMaxMessages)
+		{
+			continue;
+		}
+
+		if(counter == 0 && m_iOffsetY <= 3 )
+			continue;
+			
+		switch(entry->eType)
 		{
 			case CHAT_TYPE_CHAT:
-				if(entry.szNick[0] != 0)
+				if(entry->szNick[0] != 0)
 				{
-					RenderText(entry.szNick, pos.x, pos.y, entry.dwNickColor);
-					pos.x += ImGui::CalcTextSize(entry.szNick).x + ImGui::CalcTextSize(" ").x; //+ pGUI->GetFontSize() * 0.4;
+					RenderText(entry->szNick, pos.x, pos.y, entry->dwNickColor);
+					pos.x += ImGui::CalcTextSize(entry->szNick).x + ImGui::CalcTextSize(" ").x; //+ pGUI->GetFontSize() * 0.4;
 				}
-				RenderText(entry.utf8Message, pos.x, pos.y, entry.dwTextColor);
+				RenderText(entry->utf8Message, pos.x, pos.y, entry->dwTextColor);
 			break;
 
 			case CHAT_TYPE_INFO:
 			case CHAT_TYPE_DEBUG:
-				RenderText(entry.utf8Message, pos.x, pos.y, entry.dwTextColor);
+				RenderText(entry->utf8Message, pos.x, pos.y, entry->dwTextColor);
 			break;
 		}
 
-			pos.x = m_fChatPosX;
-			pos.y += pGUI->GetFontSize();
+		pos.x = m_fChatPosX;
+		pos.y -= pGUI->GetFontSize();
+
 	}
 }
 
@@ -146,24 +297,25 @@ void CChatWindow::RenderText(const char* u8Str, float posX, float posY, uint32_t
 
 	while(*textCur)
 	{
-		// 匹配ASCII编码
+		// {BBCCDD}
+		// '{' � '}' ������������� ASCII ���������
 		if(textCur[0] == '{' && ((&textCur[7] < textEnd) && textCur[7] == '}'))
 		{
-			// 将文字显示为大括号
+			// ������� ����� �� �������� ������
 			if(textCur != textStart)
 			{
-				// 输出到当前字符
+				// ������� �� �������� �������
 				pGUI->RenderText(posCur, colorCur, true, textStart, textCur);
 
-				// 计算新的偏移量
+				// ����������� ����� ��������
 				posCur.x += ImGui::CalcTextSize(textStart, textCur).x;
 			}
 
-			// 获得颜色
+			// �������� ����
 			if(ProcessInlineHexColor(textCur+1, textCur+7, col))
 				colorCur = col;
 
-			// 移动偏移
+			// ������� ��������
 			textCur += 7;
 			textStart = textCur + 1;
 		}
@@ -183,7 +335,7 @@ void CChatWindow::AddChatMessage(char* szNick, uint32_t dwNickColor, char* szMes
 	AddToChatWindowBuffer(CHAT_TYPE_CHAT, szMessage, szNick, m_dwTextColor, dwNickColor);
 }
 
-void CChatWindow::AddInfoMessage(char* szFormat, ...)
+void CChatWindow::AddInfoMessage(const char* szFormat, ...)
 {
 	char tmp_buf[512];
 	memset(tmp_buf, 0, sizeof(tmp_buf));
@@ -219,8 +371,10 @@ void CChatWindow::AddClientMessage(uint32_t dwColor, char* szStr)
 
 void CChatWindow::PushBack(CHAT_WINDOW_ENTRY &entry)
 {
-	if(m_ChatWindowEntries.size() >= m_iMaxMessages)
+	if(m_ChatWindowEntries.size() >= MAX_CHAT_MESSAGES)
+	{
 		m_ChatWindowEntries.pop_front();
+	}
 
 	m_ChatWindowEntries.push_back(entry);
 	return;
@@ -229,6 +383,7 @@ void CChatWindow::PushBack(CHAT_WINDOW_ENTRY &entry)
 void CChatWindow::AddToChatWindowBuffer(eChatMessageType type, char* szString, char* szNick, 
 	uint32_t dwTextColor, uint32_t dwNickColor)
 {
+
 	int iBestLineLength = 0;
 	CHAT_WINDOW_ENTRY entry;
 	entry.eType = type;
@@ -246,28 +401,29 @@ void CChatWindow::AddToChatWindowBuffer(eChatMessageType type, char* szString, c
 	if(type == CHAT_TYPE_CHAT && strlen(szString) > MAX_LINE_LENGTH)
 	{
 		iBestLineLength = MAX_LINE_LENGTH;
-		// 从头开始寻找第一个空间
+		// ������� ������ ������ � �����
 		while(szString[iBestLineLength] != ' ' && iBestLineLength)
 			iBestLineLength--;
 
-		// 如果最后一个字超过12个字符
+		// ���� ��������� ����� ������ 12 ��������
 		if((MAX_LINE_LENGTH - iBestLineLength) > 12)
 		{
-			// 输出到MAX_MESSAGE_LENGTH / 2
+			// ������� �� MAX_MESSAGE_LENGTH/2
 			cp1251_to_utf8(entry.utf8Message, szString, MAX_LINE_LENGTH);
 			PushBack(entry);
 
-			// MAX_MESSAGE_LENGTH / 2之后的输出
+			// ������� ����� MAX_MESSAGE_LENGTH/2
 			entry.szNick[0] = '\0';
 			cp1251_to_utf8(entry.utf8Message, szString+MAX_LINE_LENGTH);
 			PushBack(entry);
 		}
 		else
 		{
+			// ������� �� �������
 			cp1251_to_utf8(entry.utf8Message, szString, iBestLineLength);
 			PushBack(entry);
 
-			// 空格
+			// ������� ����� �������
 			entry.szNick[0] = '\0';
 			cp1251_to_utf8(entry.utf8Message, szString+(iBestLineLength+1));
 			PushBack(entry);
@@ -291,4 +447,16 @@ void CChatWindow::FilterInvalidChars(char *szString)
 
 		szString++;
 	}
+}
+
+void CChatWindow::AddCmdProc(const char *cmdname, CMDPROC cmdproc)
+{
+	m_mapCmds.insert(std::make_pair(cmdname, cmdproc));
+}
+
+void CChatWindow::DeleteCmdProc(const char *cmdname)
+{
+	std::unordered_map<std::string, CMDPROC>::iterator cmd = m_mapCmds.find(cmdname);
+	if(cmd != m_mapCmds.end())
+		m_mapCmds.erase(cmd);
 }

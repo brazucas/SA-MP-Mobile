@@ -1,6 +1,7 @@
 #include "../main.h"
 #include "game.h"
 #include "../util/armhook.h"
+#include "button.h"
 
 void ApplyPatches();
 void ApplyInGamePatches();
@@ -12,6 +13,7 @@ uint16_t *szGameTextMessage;
 bool bUsedPlayerSlots[PLAYER_PED_SLOTS];
 
 extern char* PLAYERS_REALLOC;
+extern CButton *pButton;
 
 CGame::CGame()
 {
@@ -27,6 +29,16 @@ CGame::CGame()
 	m_dwRaceCheckpointMarker = 0;
 
 	memset(&bUsedPlayerSlots[0], 0, PLAYER_PED_SLOTS);
+}
+
+void CGame::DisableAutoAim()
+{
+	// CPlayerPed::FindWeaponLockOnTarget
+	WriteMemory(g_libGTASA + 0x4568B0, (uintptr_t)"\x00\x20\xF7\x46", 4);
+	// CPlayerPed::FindNextWeaponLockOnTarget
+	WriteMemory(g_libGTASA + 0x4590E4, (uintptr_t)"\x00\x20\xF7\x46", 4);
+	WriteMemory(g_libGTASA + 0x438DB4, (uintptr_t)"\x00\x20\xF7\x46", 4);
+	
 }
 
 // 0.3.7
@@ -62,6 +74,8 @@ void CGame::RemovePlayer(CPlayerPed* pPlayer)
 	if(pPlayer)
 	{
 		bUsedPlayerSlots[pPlayer->m_bytePlayerNumber] = false;
+		//if(pPlayer->IsHaveAttachedObject())
+		//	pPlayer->RemoveAllAttachedObjects();
 		delete pPlayer;
 	}
 }
@@ -115,6 +129,7 @@ void CGame::InitInMenu()
 	Log("CGame: InitInMenu");
 	ApplyPatches();
 	InstallHooks();
+	GameAimSyncInit();
 	LoadSplashTexture();
 
 	szGameTextMessage = new uint16_t[0xFF];
@@ -125,7 +140,7 @@ void CGame::InitInGame()
 	Log("CGame: InitInGame");
 	ApplyInGamePatches();
 	InitScripting();
-
+	
 	GameResetRadarColors();
 }
 
@@ -344,7 +359,7 @@ void CGame::DisplayWidgets(bool bDisp)
 		*(uint16_t*)(g_libGTASA+0x8B82A0+0x10C) = 1;
 }
 
-// допилить
+// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 void CGame::PlaySound(int iSound, float fX, float fY, float fZ)
 {
 	ScriptCommand(&play_sound, fX, fY, fZ, iSound);
@@ -500,4 +515,33 @@ extern uint8_t bGZ;
 void CGame::DrawGangZone(float fPos[], uint32_t dwColor)
 {
     (( void (*)(float*, uint32_t*, uint8_t))(g_libGTASA+0x3DE7F8+1))(fPos, &dwColor, bGZ);
+}
+
+// Other stuff
+void CGame::DisplayFPS()
+{
+	// int DisplayFPS(void)
+	((int(*)())(g_libGTASA+0x39A0C4+1))();
+}
+
+int CGame::GetScreenWidth()
+{
+	return ((int(*)())(g_libGTASA+0x23816C+1))();
+}
+
+int CGame::GetScreenHeight()
+{
+	return ((int(*)())(g_libGTASA+0x238184+1))();
+}
+
+bool CGame::IsGamePaused()
+{
+	if(*((int*)g_libGTASA+0x8C9BA3)) return true;
+	return false;
+}
+
+bool CGame::IsPlayingGame()
+{
+	if(((int(*)())(g_libGTASA+0x26A524))()) return true;
+	return false;
 }

@@ -28,7 +28,7 @@ CVehicle::CVehicle(int iType, float fPosX, float fPosY, float fPosZ, float fRota
 
 		if(bSiren)
 		{
-			// допилить
+			// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 		}
 		else
 		{
@@ -97,10 +97,10 @@ CVehicle::~CVehicle()
 
 		if(m_pTrailer)
 		{
-			// detach trailer (допилить)
+			// detach trailer (пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
 		}
 
-		// тут еще какая-то интересная шняга
+		// пїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ-пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
 
 		if( m_pVehicle->entity.nModelIndex == TRAIN_PASSENGER_LOCO ||
 			m_pVehicle->entity.nModelIndex == TRAIN_FREIGHT_LOCO )
@@ -181,6 +181,12 @@ void CVehicle::SetInvulnerable(bool bInv)
 		ScriptCommand(&toggle_car_tires_vulnerable, m_dwGTAId, 1);
 		m_bIsInvulnerable = false;
 	}
+}
+
+// Feature
+bool CVehicle::IsInvulnerable()
+{
+	return m_bIsInvulnerable;
 }
 
 // 0.3.7
@@ -337,6 +343,13 @@ void CVehicle::SetEngineState(int iState)
 	ScriptCommand(&turn_car_engine, m_dwGTAId, iState);
 }
 
+void CVehicle::SetLightsState(int iState)
+{
+	//if(iState > 1) 
+	//	return;
+	ScriptCommand(&force_car_lights, m_dwGTAId, iState > 0 ? 2 : 1);
+}
+
 void CVehicle::UpdateDamageStatus(uint32_t dwPanelDamage, uint32_t dwDoorDamage, uint8_t byteLightDamage)
 {
 
@@ -377,4 +390,15 @@ unsigned int CVehicle::GetVehicleSubtype()
 	}
 
 	return 0;
+}
+
+bool CVehicle::GetSirenState()
+{
+	return false;//m_pVehicle->byteSirenOn;
+}
+
+void CVehicle::SetSirenState(bool state)
+{
+	//m_pVehicle->byteSirenOn = state;
+	//ScriptCommand(&toggle_car_siren, m_dwGTAId, state ? 1 : 0);
 }

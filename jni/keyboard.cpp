@@ -4,6 +4,9 @@
 #include "game/game.h"
 #include "keyboard.h"
 
+#include "chatwindow.h"
+extern CChatWindow *pChatWindow;
+
 extern CGUI *pGUI;
 
 CKeyBoard::CKeyBoard()
@@ -27,9 +30,17 @@ CKeyBoard::CKeyBoard()
 	m_utf8Input[0] = '\0';
 	m_iInputOffset = 0;
 
+	m_szLastItems.clear();
+	Log("m_szLastItems..");
 	InitENG();
+	
+	Log("m_szLastItems1..");
 	InitRU();
+	
+	Log("m_szLastItems2..");
 	InitNUM();
+	
+	Log("m_szLastItems3..");
 }
 
 CKeyBoard::~CKeyBoard()
@@ -42,12 +53,76 @@ void CKeyBoard::Render()
 
 	ImGuiIO& io = ImGui::GetIO();
 
+	ImVec2 vecButSize = ImVec2(ImGui::GetFontSize() * 4, ImGui::GetFontSize() * 2.5);
+	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x-vecButSize.x, io.DisplaySize.y/2-vecButSize.y*3));
+  	ImGui::Begin(" ###keys", nullptr,
+			ImGuiWindowFlags_NoTitleBar |
+			ImGuiWindowFlags_NoBackground |
+			ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_NoScrollbar |
+			ImGuiWindowFlags_NoSavedSettings |
+			ImGuiWindowFlags_AlwaysAutoResize);
+
+	//ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0);
+		
+	ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor(0xB0000000));
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor(0xFF3291F5));
+
+	if (ImGui::Button("up", vecButSize))
+	{
+		if(m_iCurrentPosItem < m_szLastItems.size())
+		{
+			for(uint16_t it = 0; it < 256; it++)
+				DeleteCharFromInput();
+			addTextToBuffer(m_szLastItems[m_iCurrentPosItem]);
+			m_iCurrentPosItem++;
+		}
+	}
+	ImGui::PopStyleColor(2);
+	ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor(0xB0000000));
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor(0xFF3291F5));
+	if (ImGui::Button("down", vecButSize))
+	{
+		if(m_iCurrentPosItem > 0)
+		{
+			m_iCurrentPosItem--;
+			for(uint16_t it = 0; it < 256; it++)
+				DeleteCharFromInput();
+			addTextToBuffer(m_szLastItems[m_iCurrentPosItem]);
+		}
+		else
+		{
+			for(uint16_t it = 0; it < 256; it++)
+				DeleteCharFromInput();
+		}
+	}
+	ImGui::PopStyleColor(2);
+
+	//ImGui::PopStyleVar();
+
+  	ImGui::End();
+
 	// background
 	ImGui::GetOverlayDrawList()->AddRectFilled(	m_Pos, ImVec2(m_Size.x, io.DisplaySize.y), 0xB0000000);
 
 	// input string
-	ImGui::GetOverlayDrawList()->AddText(pGUI->GetFont(), m_fFontSize, 
-		ImVec2(m_Pos.x + m_Size.x * 0.02, m_Pos.y + m_Pos.y * 0.05), 0xFFFFFFFF, m_utf8Input);
+	if(!m_bHidenInput)
+		ImGui::GetOverlayDrawList()->AddText(pGUI->GetFont(), m_fFontSize, 
+			ImVec2(m_Pos.x + m_Size.x * 0.02, m_Pos.y + m_Pos.y * 0.05), 0xFFFFFFFF, m_utf8Input);
+	else 
+	{
+		char _utf8Input[100*3+1];
+		strcpy(_utf8Input, m_utf8Input);
+
+		for(int i = 0; i < strlen(_utf8Input); i++)
+		{
+			if(_utf8Input[i] == '\0')
+				break;
+			_utf8Input[i] = '*';
+		}
+		ImGui::GetOverlayDrawList()->AddText(pGUI->GetFont(), m_fFontSize, 
+			ImVec2(m_Pos.x + m_Size.x * 0.02, m_Pos.y + m_Pos.y * 0.05), 0xFFFFFFFF, _utf8Input);
+	}
 
 	// dividing line
 	ImGui::GetOverlayDrawList()->AddLine(
@@ -60,7 +135,7 @@ void CKeyBoard::Render()
 	{
 		for( auto key : m_Rows[m_iLayout][i])
 		{
-			if(key.id == m_iPushedKey && key.type != KEY_SPACE)
+			if(key.id == m_iPushedKey && key.type != KEY_SPACE && !m_bHidenInput)//
 				ImGui::GetOverlayDrawList()->AddRectFilled(
 					key.pos, 
 					ImVec2(key.pos.x + key.width, key.pos.y + fKeySizeY),
@@ -102,7 +177,7 @@ void CKeyBoard::Render()
 				ImGui::GetOverlayDrawList()->AddRectFilled(
 					ImVec2(key.pos.x + key.width * 0.07, key.pos.y + fKeySizeY * 0.3),
 					ImVec2(key.pos.x + key.width * 0.93, key.pos.y + fKeySizeY * 0.7),
-					key.id == m_iPushedKey ? 0xFF3291F5 : 0xFF8A8886);
+					key.id == m_iPushedKey && !m_bHidenInput ? 0xFF3291F5 : 0xFF8A8886);
 				break;
 
 				case KEY_SEND:
@@ -117,12 +192,19 @@ void CKeyBoard::Render()
 	}
 }
 
-void CKeyBoard::Open(keyboard_callback* handler)
+void CKeyBoard::addTextToBuffer(std::string msg)
+{
+	for(int i = 0; i < msg.size(); i++)
+		AddCharToInput((char)msg[i]);
+}
+
+void CKeyBoard::Open(keyboard_callback* handler, bool hiden)
 {
 	if(handler == nullptr) return;
 
 	Close();
 
+	m_bHidenInput = hiden;
 	m_pHandler = handler;
 	m_bEnable = true;
 }
@@ -132,6 +214,7 @@ void CKeyBoard::Close()
 	m_bEnable = false;
 
 	m_sInput.clear();
+	m_iCurrentPosItem = 0;
 	m_iInputOffset = 0;
 	m_utf8Input[0] = 0;
 	m_iCase = LOWER_CASE;
@@ -147,18 +230,34 @@ bool CKeyBoard::OnTouchEvent(int type, bool multi, int x, int y)
 
 	if(!m_bEnable) return true;
 
+	ImGuiIO& io = ImGui::GetIO();
+	
+	if(x >= io.DisplaySize.x-ImGui::GetFontSize() * 4 && y >= io.DisplaySize.y/2-(ImGui::GetFontSize() * 2.5)*3 && y <=  io.DisplaySize.y/2) // keys
+	{
+		return true;
+	}
+
 	if(type == TOUCH_PUSH && y < m_Pos.y) bWannaClose = true;
 	if(type == TOUCH_POP && y < m_Pos.y && bWannaClose)
 	{
-		bWannaClose = false;
-		Close();
-		return false;
+		
+		if(!pChatWindow->CheckScrollBar(x, y))
+		{
+			if(pChatWindow) 
+			{
+				pChatWindow->OnExitFromInput();
+			}
+
+			bWannaClose = false;
+			Close();
+		}
+		return true;
 	}
 
 	m_iPushedKey = -1;
 
 	kbKey* key = GetKeyFromPos(x, y);
-	if(!key) return false;
+	if(!key) return true;
 
 	switch(type)
 	{
@@ -252,7 +351,19 @@ void CKeyBoard::DeleteCharFromInput()
 
 void CKeyBoard::Send()
 {
-	if(m_pHandler) m_pHandler(m_sInput.c_str());
+	if(pChatWindow)
+		pChatWindow->OnExitFromInput();
+
+	if(m_pHandler) 
+	{
+		if(m_sInput.size())
+		{
+			std::vector<std::string>::iterator it;
+			it = m_szLastItems.begin();
+			m_szLastItems.insert(it, m_sInput);
+		}
+		m_pHandler(m_sInput.c_str());
+	}
 	m_bEnable = false;
 }
 
@@ -275,28 +386,42 @@ void CKeyBoard::InitENG()
 {
 	ImVec2 curPos;
 	std::vector<kbKey> *row = nullptr;
+	std::vector<kbKey>::iterator it;
 	float defWidth = m_Size.x/10;
-
+	Log("m_sz1111");
 	struct kbKey key;
+	Log("m_sz1133");
 	key.type = KEY_DEFAULT;
 	key.id = 0;
 
-	// 1-ый ряд
+	// 1-пїЅпїЅ пїЅпїЅпїЅ
 	row = &m_Rows[LAYOUT_ENG][0];
 	curPos = ImVec2(0, m_Pos.y + m_fKeySizeY);
-
+Log("m_sz1112");
 	// q/Q
 	key.pos = curPos;
+	Log("m_sz2112");
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
+	Log("m_sz3112");
 	key.width = defWidth;
+	Log("m_sz4112");
 	key.code[LOWER_CASE] = 'q';
+	Log("m_sz5112");
 	key.code[UPPER_CASE] = 'Q';
+	Log("m_sz7112");
 	cp1251_to_utf8(key.name[LOWER_CASE], "q");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Q");
+	Log("m_sz8112");
 	key.id++;
-	row->push_back(key);
+	Log("m_sz9112");
+	it = row->begin();
+	Log("m_sz11112");
+	row->insert(it, key);
+	
+	Log("m_sz41112");
 	curPos.x += key.width;
-
+	
+Log("m_sz13");
 	// w/W
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -306,9 +431,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "w");
 	cp1251_to_utf8(key.name[UPPER_CASE], "W");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// e/E
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -318,9 +444,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "e");
 	cp1251_to_utf8(key.name[UPPER_CASE], "E");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// r/R
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -330,9 +457,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "r");
 	cp1251_to_utf8(key.name[UPPER_CASE], "R");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// t/T
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -342,9 +470,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "t");
 	cp1251_to_utf8(key.name[UPPER_CASE], "T");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// y/Y
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -354,9 +483,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "y");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Y");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// u/U
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -366,9 +496,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "u");
 	cp1251_to_utf8(key.name[UPPER_CASE], "U");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// i/I
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -378,9 +509,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "i");
 	cp1251_to_utf8(key.name[UPPER_CASE], "I");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// o/O
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -390,9 +522,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "o");
 	cp1251_to_utf8(key.name[UPPER_CASE], "O");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// p/P
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -402,14 +535,15 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "p");
 	cp1251_to_utf8(key.name[UPPER_CASE], "P");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
-	// 2-й ряд
+Log("m_sz3331");
+	// 2-пїЅ пїЅпїЅпїЅ
 	row = &m_Rows[LAYOUT_ENG][1];
 	curPos.x = defWidth * 0.5;
 	curPos.y += m_fKeySizeY;
-
+Log("m_sz3331");
 	// a/A
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -419,9 +553,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "a");
 	cp1251_to_utf8(key.name[UPPER_CASE], "A");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// s/S
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -431,9 +566,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "s");
 	cp1251_to_utf8(key.name[UPPER_CASE], "S");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// d/D
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -443,9 +579,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "d");
 	cp1251_to_utf8(key.name[UPPER_CASE], "D");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// f/F
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -455,9 +592,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "f");
 	cp1251_to_utf8(key.name[UPPER_CASE], "F");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// g/G
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -467,9 +605,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "g");
 	cp1251_to_utf8(key.name[UPPER_CASE], "G");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// h/H
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -479,9 +618,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "h");
 	cp1251_to_utf8(key.name[UPPER_CASE], "H");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// j/J
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -491,9 +631,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "j");
 	cp1251_to_utf8(key.name[UPPER_CASE], "J");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// k/K
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -503,9 +644,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "k");
 	cp1251_to_utf8(key.name[UPPER_CASE], "K");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// l/L
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -515,14 +657,15 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "l");
 	cp1251_to_utf8(key.name[UPPER_CASE], "L");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
-	// 3-й ряд
+	// 3-пїЅ пїЅпїЅпїЅ
 	row = &m_Rows[LAYOUT_ENG][2];
 	curPos.x = 0;
 	curPos.y += m_fKeySizeY;
-
+Log("m_sz3331");
 	// Shift
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -533,11 +676,12 @@ void CKeyBoard::InitENG()
 	key.name[UPPER_CASE][0] = 0;
 	key.type = KEY_SHIFT;
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	key.type = KEY_DEFAULT;
-
+Log("m_sz3331");
 	// z/Z
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -547,9 +691,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "z");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Z");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// x/X
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -559,9 +704,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "x");
 	cp1251_to_utf8(key.name[UPPER_CASE], "X");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// c/C
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -571,9 +717,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "c");
 	cp1251_to_utf8(key.name[UPPER_CASE], "C");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// v/V
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -583,9 +730,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "v");
 	cp1251_to_utf8(key.name[UPPER_CASE], "V");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// b/B
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -595,9 +743,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "b");
 	cp1251_to_utf8(key.name[UPPER_CASE], "B");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// n/N
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -607,9 +756,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "n");
 	cp1251_to_utf8(key.name[UPPER_CASE], "N");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// m/M
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -619,9 +769,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "m");
 	cp1251_to_utf8(key.name[UPPER_CASE], "M");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// delete
 	key.pos = curPos;
 	key.symPos = ImVec2(0,0);
@@ -632,9 +783,10 @@ void CKeyBoard::InitENG()
 	key.name[UPPER_CASE][0] = 0;
 	key.type = KEY_BACKSPACE;
 	key.id++;
-	row->push_back(key);
-
-	// 4-я строка
+	it = row->begin();
+	row->insert(it, key);
+Log("m_sz3331");
+	// 4-пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 	row = &m_Rows[LAYOUT_ENG][3];
 	curPos.x = 0;
 	curPos.y += m_fKeySizeY;
@@ -650,9 +802,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "/");
 	cp1251_to_utf8(key.name[UPPER_CASE], "/");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// comma (,)
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -662,9 +815,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], ",");
 	cp1251_to_utf8(key.name[UPPER_CASE], ",");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// switch language
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.2, curPos.y + m_fKeySizeY * 0.2);
@@ -675,9 +829,10 @@ void CKeyBoard::InitENG()
 	key.name[UPPER_CASE][0] = 0;
 	key.type = KEY_SWITCH;
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// Space
 	key.pos = curPos;
 	key.symPos = ImVec2(0,0);
@@ -688,11 +843,12 @@ void CKeyBoard::InitENG()
 	key.name[UPPER_CASE][0] = 0;
 	key.type = KEY_SPACE;
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	key.type = KEY_DEFAULT;
-
+Log("m_sz3331");
 	// ?
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -702,9 +858,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "?");
 	cp1251_to_utf8(key.name[UPPER_CASE], "?");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// !
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -714,9 +871,10 @@ void CKeyBoard::InitENG()
 	cp1251_to_utf8(key.name[LOWER_CASE], "!");
 	cp1251_to_utf8(key.name[UPPER_CASE], "!");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	// Send
 	key.pos = curPos;
 	key.symPos = ImVec2(curPos.x + defWidth * 0.4, curPos.y + m_fKeySizeY * 0.2);
@@ -727,9 +885,10 @@ void CKeyBoard::InitENG()
 	key.name[UPPER_CASE][0] = 0;
 	key.type = KEY_SEND;
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
-
+Log("m_sz3331");
 	return;
 }
 
@@ -737,6 +896,7 @@ void CKeyBoard::InitRU()
 {
 	ImVec2 curPos;
 	std::vector<kbKey> *row = nullptr;
+	std::vector<kbKey>::iterator it;
 	float defWidth = m_Size.x/11;
 
 	struct kbKey key;
@@ -756,7 +916,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "й");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Й");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// ц/Ц
@@ -768,7 +929,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "ц");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Ц");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// у/У
@@ -780,7 +942,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "у");
 	cp1251_to_utf8(key.name[UPPER_CASE], "У");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// к/К
@@ -792,7 +955,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "к");
 	cp1251_to_utf8(key.name[UPPER_CASE], "К");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// е/Е
@@ -804,7 +968,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "е");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Е");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// н/Н
@@ -816,7 +981,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "н");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Н");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// г/Г
@@ -828,7 +994,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "г");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Г");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// ш/Ш
@@ -840,7 +1007,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "ш");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Ш");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// щ/Щ
@@ -852,7 +1020,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "щ");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Щ");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// з/З
@@ -864,7 +1033,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "з");
 	cp1251_to_utf8(key.name[UPPER_CASE], "З");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// х/Х
@@ -876,7 +1046,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "х");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Х");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// 2-й ряд
@@ -893,7 +1064,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "ф");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Ф");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// ы/Ы
@@ -905,7 +1077,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "ы");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Ы");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// в/В
@@ -917,7 +1090,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "в");
 	cp1251_to_utf8(key.name[UPPER_CASE], "В");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// а/А
@@ -929,7 +1103,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "а");
 	cp1251_to_utf8(key.name[UPPER_CASE], "А");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// п/П
@@ -941,7 +1116,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "п");
 	cp1251_to_utf8(key.name[UPPER_CASE], "П");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// р/Р
@@ -953,7 +1129,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "р");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Р");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// о/О
@@ -965,7 +1142,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "о");
 	cp1251_to_utf8(key.name[UPPER_CASE], "О");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// л/Л
@@ -977,7 +1155,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "л");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Л");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// д/Д
@@ -989,7 +1168,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "д");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Д");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// ж/Ж
@@ -1001,7 +1181,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "ж");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Ж");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// э/Э
@@ -1013,7 +1194,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "э");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Э");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// 3-й ряд
@@ -1031,7 +1213,8 @@ void CKeyBoard::InitRU()
 	key.name[UPPER_CASE][0] = 0;
 	key.type = KEY_SHIFT;
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	key.type = KEY_DEFAULT;
@@ -1045,7 +1228,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "я");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Я");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// ч/Ч
@@ -1057,7 +1241,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "ч");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Ч");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// с/С
@@ -1069,7 +1254,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "с");
 	cp1251_to_utf8(key.name[UPPER_CASE], "С");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// м/М
@@ -1081,7 +1267,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "м");
 	cp1251_to_utf8(key.name[UPPER_CASE], "М");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// и/И
@@ -1093,7 +1280,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "и");
 	cp1251_to_utf8(key.name[UPPER_CASE], "И");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// т/Т
@@ -1105,7 +1293,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "т");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Т");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// ь/Ь
@@ -1117,7 +1306,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "ь");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Ь");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// б/Б
@@ -1129,7 +1319,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "б");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Б");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// ю/Ю
@@ -1141,7 +1332,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "ю");
 	cp1251_to_utf8(key.name[UPPER_CASE], "Ю");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// backspace
@@ -1154,7 +1346,8 @@ void CKeyBoard::InitRU()
 	key.name[UPPER_CASE][0] = 0;
 	key.id++;
 	key.type = KEY_BACKSPACE;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 
 	// 4-я строка
 	row = &m_Rows[LAYOUT_RUS][3];
@@ -1173,7 +1366,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "/");
 	cp1251_to_utf8(key.name[UPPER_CASE], "/");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// comma (,)
@@ -1185,7 +1379,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], ",");
 	cp1251_to_utf8(key.name[UPPER_CASE], ",");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// switch language
@@ -1198,7 +1393,8 @@ void CKeyBoard::InitRU()
 	key.name[UPPER_CASE][0] = 0;
 	key.type = KEY_SWITCH;
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// Space
@@ -1211,7 +1407,8 @@ void CKeyBoard::InitRU()
 	key.name[UPPER_CASE][0] = 0;
 	key.type = KEY_SPACE;
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	key.type = KEY_DEFAULT;
@@ -1225,7 +1422,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "?");
 	cp1251_to_utf8(key.name[UPPER_CASE], "?");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// !
@@ -1237,7 +1435,8 @@ void CKeyBoard::InitRU()
 	cp1251_to_utf8(key.name[LOWER_CASE], "!");
 	cp1251_to_utf8(key.name[UPPER_CASE], "!");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// Send
@@ -1250,7 +1449,8 @@ void CKeyBoard::InitRU()
 	key.name[UPPER_CASE][0] = 0;
 	key.type = KEY_SEND;
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	return;
@@ -1260,13 +1460,14 @@ void CKeyBoard::InitNUM()
 {
 	ImVec2 curPos;
 	std::vector<kbKey> *row = nullptr;
+	std::vector<kbKey>::iterator it;
 	float defWidth = m_Size.x/10;
 
 	struct kbKey key;
 	key.type = KEY_DEFAULT;
 	key.id = 0;
 
-	// 1-ый ряд
+	// 1-пїЅпїЅ пїЅпїЅпїЅ
 	row = &m_Rows[LAYOUT_NUM][0];
 	curPos = ImVec2(0, m_Pos.y + m_fKeySizeY);
 
@@ -1279,7 +1480,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "1");
 	cp1251_to_utf8(key.name[UPPER_CASE], "1");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// 2
@@ -1291,7 +1493,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "2");
 	cp1251_to_utf8(key.name[UPPER_CASE], "2");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// 3
@@ -1303,7 +1506,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "3");
 	cp1251_to_utf8(key.name[UPPER_CASE], "3");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// 4
@@ -1315,7 +1519,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "4");
 	cp1251_to_utf8(key.name[UPPER_CASE], "4");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// 5
@@ -1327,7 +1532,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "5");
 	cp1251_to_utf8(key.name[UPPER_CASE], "5");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// 6
@@ -1339,7 +1545,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "6");
 	cp1251_to_utf8(key.name[UPPER_CASE], "6");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// 7
@@ -1351,7 +1558,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "7");
 	cp1251_to_utf8(key.name[UPPER_CASE], "7");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// 8
@@ -1363,7 +1571,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "8");
 	cp1251_to_utf8(key.name[UPPER_CASE], "8");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// 9
@@ -1375,7 +1584,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "9");
 	cp1251_to_utf8(key.name[UPPER_CASE], "9");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// 0
@@ -1387,10 +1597,11 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "0");
 	cp1251_to_utf8(key.name[UPPER_CASE], "0");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
-	// 2-й ряд
+	// 2-пїЅ пїЅпїЅпїЅ
 	row = &m_Rows[LAYOUT_NUM][1];
 	curPos.x = 0;
 	curPos.y += m_fKeySizeY;
@@ -1404,7 +1615,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "@");
 	cp1251_to_utf8(key.name[UPPER_CASE], "@");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// #
@@ -1416,7 +1628,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "#");
 	cp1251_to_utf8(key.name[UPPER_CASE], "#");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// $
@@ -1428,7 +1641,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "$");
 	cp1251_to_utf8(key.name[UPPER_CASE], "$");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// %
@@ -1440,7 +1654,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "%");
 	cp1251_to_utf8(key.name[UPPER_CASE], "%");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// "
@@ -1452,7 +1667,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "\"");
 	cp1251_to_utf8(key.name[UPPER_CASE], "\"");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// *
@@ -1464,7 +1680,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "*");
 	cp1251_to_utf8(key.name[UPPER_CASE], "*");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// (
@@ -1476,7 +1693,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "(");
 	cp1251_to_utf8(key.name[UPPER_CASE], "(");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// )
@@ -1488,7 +1706,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], ")");
 	cp1251_to_utf8(key.name[UPPER_CASE], ")");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// -
@@ -1500,7 +1719,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "-");
 	cp1251_to_utf8(key.name[UPPER_CASE], "-");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// _
@@ -1512,10 +1732,11 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "_");
 	cp1251_to_utf8(key.name[UPPER_CASE], "_");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
-	// 3-й ряд
+	// 3-пїЅ пїЅпїЅпїЅ
 	row = &m_Rows[LAYOUT_NUM][2];
 	curPos.x = 0;
 	curPos.y += m_fKeySizeY;
@@ -1529,7 +1750,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], ".");
 	cp1251_to_utf8(key.name[UPPER_CASE], ".");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// :
@@ -1541,7 +1763,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], ":");
 	cp1251_to_utf8(key.name[UPPER_CASE], ":");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// ;
@@ -1553,7 +1776,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], ";");
 	cp1251_to_utf8(key.name[UPPER_CASE], ";");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// +
@@ -1565,7 +1789,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "+");
 	cp1251_to_utf8(key.name[UPPER_CASE], "+");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// =
@@ -1577,7 +1802,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "=");
 	cp1251_to_utf8(key.name[UPPER_CASE], "=");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// <
@@ -1589,7 +1815,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "<");
 	cp1251_to_utf8(key.name[UPPER_CASE], "<");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// >
@@ -1601,7 +1828,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], ">");
 	cp1251_to_utf8(key.name[UPPER_CASE], ">");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// [
@@ -1613,7 +1841,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "[");
 	cp1251_to_utf8(key.name[UPPER_CASE], "[");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// ]
@@ -1625,7 +1854,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "]");
 	cp1251_to_utf8(key.name[UPPER_CASE], "]");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// delete
@@ -1638,9 +1868,10 @@ void CKeyBoard::InitNUM()
 	key.name[UPPER_CASE][0] = 0;
 	key.type = KEY_BACKSPACE;
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 
-	// 4-я строка
+	// 4-пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 	row = &m_Rows[LAYOUT_NUM][3];
 	curPos.x = 0;
 	curPos.y += m_fKeySizeY;
@@ -1656,7 +1887,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "/");
 	cp1251_to_utf8(key.name[UPPER_CASE], "/");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// comma (,)
@@ -1668,7 +1900,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], ",");
 	cp1251_to_utf8(key.name[UPPER_CASE], ",");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// switch language
@@ -1681,7 +1914,8 @@ void CKeyBoard::InitNUM()
 	key.name[UPPER_CASE][0] = 0;
 	key.type = KEY_SWITCH;
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// Space
@@ -1694,7 +1928,8 @@ void CKeyBoard::InitNUM()
 	key.name[UPPER_CASE][0] = 0;
 	key.type = KEY_SPACE;
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	key.type = KEY_DEFAULT;
@@ -1708,7 +1943,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "?");
 	cp1251_to_utf8(key.name[UPPER_CASE], "?");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// !
@@ -1720,7 +1956,8 @@ void CKeyBoard::InitNUM()
 	cp1251_to_utf8(key.name[LOWER_CASE], "!");
 	cp1251_to_utf8(key.name[UPPER_CASE], "!");
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	// Send
@@ -1733,7 +1970,8 @@ void CKeyBoard::InitNUM()
 	key.name[UPPER_CASE][0] = 0;
 	key.type = KEY_SEND;
 	key.id++;
-	row->push_back(key);
+	it = row->begin();
+	row->insert(it, key);
 	curPos.x += key.width;
 
 	return;

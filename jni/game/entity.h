@@ -6,6 +6,7 @@ public:
 	CEntity() {};
 	virtual ~CEntity() {};
 
+	void SetCollision(bool st);
 	// 0.3.7
 	void GetMatrix(PMATRIX4X4 Matrix);
 	// 0.3.7

@@ -56,7 +56,7 @@ void FilterColors(char* szStr)
 	strcpy(szStr, szNonColored);
 }
 
-void CText3DLabelsPool::CreateTextLabel(int labelID, char* text, uint32_t color, 
+void CText3DLabelsPool::CreateTextLabel(int labelID, char* text, uint32_t color,
 	float posX, float posY, float posZ, float drawDistance, bool useLOS, PLAYERID attachedToPlayerID, VEHICLEID attachedToVehicleID)
 {
 	if (m_pTextLabels[labelID])
@@ -65,16 +65,13 @@ void CText3DLabelsPool::CreateTextLabel(int labelID, char* text, uint32_t color,
 		m_pTextLabels[labelID] = nullptr;
 		m_bSlotState[labelID] = false;
 	}
-
 	TEXT_LABELS* pTextLabel = new TEXT_LABELS;
-
 	if (pTextLabel)
 	{
 		//pTextLabel->text = text;
 		cp1251_to_utf8(pTextLabel->text, text);
 		cp1251_to_utf8(pTextLabel->textWithoutColors, text);
 		FilterColors(pTextLabel->textWithoutColors);
-
 		pTextLabel->color = color;
 		pTextLabel->pos.X = posX;
 		pTextLabel->pos.Y = posY;
@@ -85,14 +82,13 @@ void CText3DLabelsPool::CreateTextLabel(int labelID, char* text, uint32_t color,
 		pTextLabel->attachedToVehicleID = attachedToVehicleID;
 
 		pTextLabel->m_fTrueX = -1;
-
 		if (attachedToVehicleID != INVALID_VEHICLE_ID || attachedToPlayerID != INVALID_PLAYER_ID)
 		{
 			pTextLabel->offsetCoords.X = posX;
 			pTextLabel->offsetCoords.Y = posY;
 			pTextLabel->offsetCoords.Z = posZ;
 		}
-
+		
 		m_pTextLabels[labelID] = pTextLabel;
 		m_bSlotState[labelID] = true;
 	}
@@ -221,46 +217,159 @@ void TextWithColors(ImVec2 pos, ImColor col, const char* szStr)
 	//if(pushedColorStyle)
 	//	ImGui::PopStyleColor();
 }
+ImVec2 CalcTextSizeWithoutTags(char* szStr)
+{
+	if(!szStr) return ImVec2(0, 0);
 
+	char szNonColored[2048+1];
+	int iNonColoredMsgLen = 0;
+
+	for(int pos = 0; pos < strlen(szStr) && szStr[pos] != '\0'; pos++)
+	{
+		if(pos+7 < strlen(szStr))
+		{
+			if(szStr[pos] == '{' && szStr[pos+7] == '}')
+			{
+				pos += 7;
+				continue;
+			}
+		}
+
+		szNonColored[iNonColoredMsgLen] = szStr[pos];
+		iNonColoredMsgLen++;
+	}
+
+	szNonColored[iNonColoredMsgLen] = 0;
+
+	return ImGui::CalcTextSize(szNonColored);
+}
+
+void Render3DLabel(ImVec2 pos, char* utf8string, uint32_t dwColor)
+{
+	uint16_t linesCount = 0;
+	std::string strUtf8 = utf8string;
+	int size = strUtf8.length();
+	std::string color;
+
+	for(uint32_t i = 0; i < size; i++)
+	{
+		if(i+7 < strUtf8.length())
+		{
+			if(strUtf8[i] == '{' && strUtf8[i+7] == '}' )
+			{
+				color = strUtf8.substr(i, 7+1);
+			}
+		}
+		if(strUtf8[i] == '\n')
+		{
+			linesCount++;
+			if(i+1 < strUtf8.length() && !color.empty())
+			{
+				strUtf8.insert(i+1 , color);
+				size += color.length();
+				color.clear();
+			}
+		}
+		if(strUtf8[i] == '\t')
+		{
+			strUtf8.replace(i, 1, " ");
+		}
+	}
+	pos.y += pGUI->GetFontSize()*(linesCount / 2);
+	if(linesCount)
+	{
+		uint16_t curLine = 0;
+		uint16_t curIt = 0;
+		for(uint32_t i = 0; i < strUtf8.length(); i++)
+		{
+			if(strUtf8[i] == '\n')
+			{
+				if(strUtf8[curIt] == '\n' )
+				{
+					curIt++;
+				}
+				ImVec2 _pos = pos;
+				_pos.x -= CalcTextSizeWithoutTags((char*)strUtf8.substr(curIt, i-curIt).c_str()).x / 2;
+				_pos.y -= ( pGUI->GetFontSize()*(linesCount - curLine) );
+				TextWithColors( _pos, __builtin_bswap32(dwColor), (char*)strUtf8.substr(curIt, i-curIt).c_str() );
+				curIt = i;
+				curLine++;
+			}
+		}
+		if(strUtf8[curIt] == '\n')
+		{
+			curIt++;
+		}
+		if(strUtf8[curIt] != '\0')
+		{
+			ImVec2 _pos = pos;
+			_pos.x -= CalcTextSizeWithoutTags((char*)strUtf8.substr(curIt, strUtf8.size()-curIt).c_str()).x / 2;
+			_pos.y -= ( pGUI->GetFontSize()*(linesCount - curLine) );
+			TextWithColors( _pos, __builtin_bswap32(dwColor), (char*)strUtf8.substr(curIt, strUtf8.length()-curIt).c_str() );
+		}
+	}
+	else
+	{
+		pos.x -= CalcTextSizeWithoutTags((char*)strUtf8.c_str()).x / 2;
+		TextWithColors( pos, __builtin_bswap32(dwColor), (char*)strUtf8.c_str() );
+	}
+
+}
+
+void CText3DLabelsPool::UpdateFlag()
+{
+	if(m_bFlag)
+		m_bFlag = false;
+	else 
+		m_bFlag = true;
+}
 
 void CText3DLabelsPool::Draw()
 {
+	if(GetFlag())
+		return;
 	int hitEntity = 0;
-
 	for (int x = 0; x < MAX_TEXT_LABELS + MAX_PLAYER_TEXT_LABELS + 2; x++)
 	{
-		if (x == INVALID_TEXT_LABEL) continue;
+		if (x == MAX_TEXT_LABELS + MAX_PLAYER_TEXT_LABELS + 2) continue;
 		if (m_bSlotState[x])
 		{
 			CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
 			CVehiclePool *pVehiclePool = pNetGame->GetVehiclePool();
-
 			//D3DXVECTOR3 textPos;
 			VECTOR textPos;
-			if (m_pTextLabels[x]->attachedToPlayerID != INVALID_PLAYER_ID)
+			if(pPlayerPool)
 			{
-				if (m_pTextLabels[x]->attachedToPlayerID == pPlayerPool->GetLocalPlayerID())
+				if ( m_pTextLabels[x]->attachedToPlayerID != INVALID_PLAYER_ID)
 				{
-					//3d label for localplayer
-					MATRIX4X4 matLocalPlayer;
-					pPlayerPool->GetLocalPlayer()->GetPlayerPed()->GetMatrix(&matLocalPlayer);
-						
-					textPos.X = matLocalPlayer.pos.X + m_pTextLabels[x]->offsetCoords.X;
-					textPos.Y = matLocalPlayer.pos.Y + m_pTextLabels[x]->offsetCoords.Y;
-					textPos.Z = matLocalPlayer.pos.Z + m_pTextLabels[x]->offsetCoords.Z;
-				}
-				if (pPlayerPool->GetSlotState(m_pTextLabels[x]->attachedToPlayerID) == true)
-				{
-					//3d label for player (not localplayer)
-					MATRIX4X4 matPlayer;
-					pPlayerPool->GetAt(m_pTextLabels[x]->attachedToPlayerID)->GetPlayerPed()->GetMatrix(&matPlayer);
+					if (m_pTextLabels[x]->attachedToPlayerID == pPlayerPool->GetLocalPlayerID())
+					{
+						//3d label for localplayer
+						MATRIX4X4 matLocalPlayer;
+						if(!pPlayerPool->GetLocalPlayer()->GetPlayerPed())
+							continue;
+						pPlayerPool->GetLocalPlayer()->GetPlayerPed()->GetMatrix(&matLocalPlayer);
 
-					textPos.X = matPlayer.pos.X + m_pTextLabels[x]->offsetCoords.X;
-					textPos.Y = matPlayer.pos.Y + m_pTextLabels[x]->offsetCoords.Y;
-					textPos.Z = matPlayer.pos.Z + m_pTextLabels[x]->offsetCoords.Z;
+						VECTOR vecOut;
+						pPlayerPool->GetLocalPlayer()->GetPlayerPed()->GetBonePosition(8, &vecOut);
+
+						textPos.X = vecOut.X + m_pTextLabels[x]->offsetCoords.X;
+						textPos.Y = vecOut.Y + m_pTextLabels[x]->offsetCoords.Y;
+						textPos.Z = vecOut.Z + m_pTextLabels[x]->offsetCoords.Z;
+					}
+					if (pPlayerPool->GetSlotState(m_pTextLabels[x]->attachedToPlayerID) == true)
+					{
+						//3d label for player (not localplayer)
+						VECTOR matPlayer;
+						pPlayerPool->GetAt(m_pTextLabels[x]->attachedToPlayerID)->GetPlayerPed()->GetBonePosition(8, &matPlayer);
+
+						textPos.X = matPlayer.X + m_pTextLabels[x]->offsetCoords.X;
+						textPos.Y = matPlayer.Y + m_pTextLabels[x]->offsetCoords.Y;
+						textPos.Z = matPlayer.Z + 0.23 + m_pTextLabels[x]->offsetCoords.Z;
+					}
 				}
 			}
-			else if (m_pTextLabels[x]->attachedToVehicleID != INVALID_VEHICLE_ID)
+			if(pVehiclePool && m_pTextLabels[x]->attachedToVehicleID != INVALID_VEHICLE_ID)
 			{
 				if (pVehiclePool->GetSlotState(m_pTextLabels[x]->attachedToVehicleID) == true)
 				{
@@ -272,13 +381,12 @@ void CText3DLabelsPool::Draw()
 					textPos.Z = matVehicle.pos.Z + m_pTextLabels[x]->offsetCoords.Z;
 				}
 			}
-			else
+			else if(m_pTextLabels[x]->attachedToVehicleID == INVALID_VEHICLE_ID && m_pTextLabels[x]->attachedToPlayerID == INVALID_PLAYER_ID)
 			{
 				textPos.X = m_pTextLabels[x]->pos.X;
 				textPos.Y = m_pTextLabels[x]->pos.Y;
 				textPos.Z = m_pTextLabels[x]->pos.Z;
 			}
-
 			if (m_pTextLabels[x]->useLineOfSight)
 			{
 				MATRIX4X4 mat;
@@ -297,58 +405,22 @@ void CText3DLabelsPool::Draw()
 					pCam->pos1x, pCam->pos1y, pCam->pos1z,
 					1, 0, 0, 0, 0);
 			}
-				
 			m_pTextLabels[x]->pos.X = textPos.X;
 			m_pTextLabels[x]->pos.Y = textPos.Y;
 			m_pTextLabels[x]->pos.Z = textPos.Z;
-
 			if (!m_pTextLabels[x]->useLineOfSight || hitEntity)
 			{
 				if (pPlayerPool->GetLocalPlayer()->GetPlayerPed()->GetDistanceFromPoint(m_pTextLabels[x]->pos.X, m_pTextLabels[x]->pos.Y, m_pTextLabels[x]->pos.Z) <= m_pTextLabels[x]->drawDistance)
 				{
-					// pLabel->Draw(&textPos, (char *)m_pTextLabels[x]->text.c_str(), m_pTextLabels[x]->color);
 					VECTOR Out;
 
 					// CSprite::CalcScreenCoors
 					(( void (*)(VECTOR*, VECTOR*, float*, float*, bool, bool))(g_libGTASA+0x54EEC0+1))(&textPos, &Out, 0, 0, 0, 0);
-					if(Out.Z < 1.0f) return;
-
+					if(Out.Z < 1.0f) continue;
 					ImVec2 pos = ImVec2(Out.X, Out.Y);
-
-					if(m_pTextLabels[x]->m_fTrueX < 0)
-					{
-						char* curBegin = m_pTextLabels[x]->textWithoutColors;
-						char* curPos = m_pTextLabels[x]->textWithoutColors;
-						while(*curPos != '\0')
-						{
-							if(*curPos == '\n')
-							{
-								float width = ImGui::CalcTextSize(curBegin, (char*)(curPos-1)).x;
-								if(width > m_pTextLabels[x]->m_fTrueX) 
-								{
-									m_pTextLabels[x]->m_fTrueX = width;
-									Log("m_fTrueX = %f", m_pTextLabels[x]->m_fTrueX);
-								}
-
-								curBegin = curPos+1;
-							}
-
-							curPos++;
-						}
-
-						if(m_pTextLabels[x]->m_fTrueX < 0) 
-						{
-							m_pTextLabels[x]->m_fTrueX = ImGui::CalcTextSize(m_pTextLabels[x]->textWithoutColors).x;
-						}
-
-						//Log("m_fTrueX = %f", m_pTextLabels[x]->m_fTrueX);
-					}
-
-					pos.x -= (m_pTextLabels[x]->m_fTrueX/2);
-					//pos.x -= ImGui::CalcTextSize(m_pTextLabels[x]->text).x;
-					//pGUI->RenderText(pos, __builtin_bswap32(m_pTextLabels[x]->color), true, m_pTextLabels[x]->text);
-					TextWithColors( pos, __builtin_bswap32(m_pTextLabels[x]->color), m_pTextLabels[x]->text );
-				}	
+					// removed piece
+					Render3DLabel(pos, m_pTextLabels[x]->text, m_pTextLabels[x]->color );
+				}
 			}
 		}
 	}

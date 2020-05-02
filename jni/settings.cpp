@@ -2,6 +2,8 @@
 #include "settings.h"
 #include "vendor/inih/cpp/INIReader.h"
 
+void ApplyFPSPatch(uint8_t);
+
 CSettings::CSettings()
 {
 	Log("Loading settings..");	
@@ -18,38 +20,47 @@ CSettings::CSettings()
 		return;
 	}
 
-	// 客户端
+	// Client
 	size_t length = 0;
-	sprintf(buff, "__android_%d%d", rand() % 1000, rand() % 1000);
-	length = reader.Get("client", "name", buff).copy(m_Settings.szNickName, MAX_PLAYER_NAME);
+	length = reader.Get("client", "name", "Player").copy(m_Settings.szNickName, MAX_PLAYER_NAME); // Берется с INI Файла, если нету - то отсюда
 	m_Settings.szNickName[length] = '\0';
-	length = reader.Get("client", "host", "").copy(m_Settings.szHost, MAX_SETTINGS_STRING);
+	length = reader.Get("client", "host", "54.36.188.222").copy(m_Settings.szHost, MAX_SETTINGS_STRING); // Берется с INI Файла, если нету - то отсюда
 	m_Settings.szHost[length] = '\0';
 	length = reader.Get("client", "password", "").copy(m_Settings.szPassword, MAX_SETTINGS_STRING);
 	m_Settings.szPassword[length] = '\0';
 	m_Settings.iPort = reader.GetInteger("client", "port", 7777);
 
-	// 调试
+	int fpsLimit = reader.GetInteger("client", "fps", 60);
+	if(fpsLimit > 50)
+		ApplyFPSPatch(60);
+	else if(fpsLimit < 30)
+		ApplyFPSPatch(30);
+	else ApplyFPSPatch(fpsLimit);
+
+	// Debug
 	m_Settings.bDebug = reader.GetBoolean("debug", "debug", true);
 	m_Settings.bOnline = reader.GetBoolean("debug", "online", false);
 
-	// GUI
+	// gui
 	length = reader.Get("gui", "Font", "Arial.ttf").copy(m_Settings.szFont, 35);
 	m_Settings.szFont[length] = '\0';
 	m_Settings.fFontSize = reader.GetReal("gui", "FontSize", 37.0f);
 	m_Settings.iFontOutline = reader.GetInteger("gui", "FontOutline", 1);
-	// 聊天
+	// chat
 	m_Settings.fChatPosX = reader.GetReal("gui", "ChatPosX", 325.0f);
 	m_Settings.fChatPosY = reader.GetReal("gui", "ChatPosY", 25.0f);
 	m_Settings.fChatSizeX = reader.GetReal("gui", "ChatSizeX", 1150.0f);
 	m_Settings.fChatSizeY = reader.GetReal("gui", "ChatSizeY", 220.0f);
 	m_Settings.iChatMaxMessages = reader.GetInteger("gui", "ChatMaxMessages", 6);
-	// 出生视图
+	// scoreboard
+	m_Settings.fScoreBoardSizeX = reader.GetReal("gui", "ScoreBoardSizeX", 1024.0f);
+	m_Settings.fScoreBoardSizeY = reader.GetReal("gui", "ScoreBoardSizeY", 768.0f);
+	// spawnscreen
 	m_Settings.fSpawnScreenPosX = reader.GetReal("gui", "SpawnScreenPosX", 660.0f);
 	m_Settings.fSpawnScreenPosY = reader.GetReal("gui", "SpawnScreenPosY", 950.0f);
 	m_Settings.fSpawnScreenSizeX = reader.GetReal("gui", "SpawnScreenSizeX", 600.0f);
 	m_Settings.fSpawnScreenSizeY = reader.GetReal("gui", "SpawnScreenSizeY", 100.0f);
-	// 名称条
+	// nametags
 	m_Settings.fHealthBarWidth = reader.GetReal("gui", "HealthBarWidth", 100.0f);
 	m_Settings.fHealthBarHeight = reader.GetReal("gui", "HealthBarHeight", 10.0f);
 }

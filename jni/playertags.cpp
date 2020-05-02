@@ -5,11 +5,13 @@
 #include "gui/gui.h"
 #include "playertags.h"
 #include "settings.h"
+#include "game/cheats.h"
 
 extern CGame *pGame;
 extern CNetGame *pNetGame;
 extern CGUI *pGUI;
 extern CSettings *pSettings;
+extern CCheats *pCheats;
 
 CPlayerTags::CPlayerTags()
 {
@@ -21,7 +23,7 @@ CPlayerTags::CPlayerTags()
 
 CPlayerTags::~CPlayerTags() {}
 
-// 完成
+// ��������
 void CPlayerTags::Render()
 {
 	VECTOR VecPos;
@@ -76,31 +78,21 @@ void CPlayerTags::Render()
 						}
 
 						if(!pNetGame->m_bNameTagLOS || dwHitEntity)
-						{
-							sprintf(szNickBuf, "%s (%d)", pPlayerPool->GetPlayerName(playerId), playerId);
-							Draw(&VecPos, szNickBuf,
-								pPlayer->GetPlayerColor(),
-								pPlayerPed->GetDistanceFromCamera(),
-								pPlayer->m_fReportedHealth,
-								pPlayer->m_fReportedArmour,
-								pPlayer->IsAFK());
-						}
+							{
+								sprintf(szNickBuf, "%s (%d)", pPlayerPool->GetPlayerName(playerId), playerId);
+								Draw(&VecPos, szNickBuf,
+									pPlayer->GetPlayerColor(),
+									pPlayerPed->GetDistanceFromCamera(),
+									pPlayer->m_fReportedHealth,
+									pPlayer->m_fReportedArmour,
+									pPlayer->IsAFK());
+							}
 					}
 				}
 			}
 		}
 	}
 }
-
-
-#pragma pack(1)
-typedef struct _RECT
-{
-	float x; // +0
-	float y; // +4
-	float x1; // +8
-	float y1; // +12
-} RECT, *PRECT;
 
 void CPlayerTags::Draw(VECTOR* vec, char* szName, uint32_t dwColor, 
 	float fDist, float fHealth, float fArmour, bool bAfk)
@@ -127,7 +119,7 @@ void CPlayerTags::Draw(VECTOR* vec, char* szName, uint32_t dwColor,
 	// Health Bar
 	if(fHealth < 0.0f) return;
 
-	// 四舍五入
+	// ���������
 	Out.X = (float)((int)Out.X);
 	Out.Y = (float)((int)Out.Y);
 
@@ -175,9 +167,9 @@ void CPlayerTags::Draw(VECTOR* vec, char* szName, uint32_t dwColor,
 		HealthBar2.y += 13.0f;
 	}
 
-	ImGui::GetOverlayDrawList()->AddRectFilled(HealthBarBDR1, HealthBarBDR2, HealthBarBDRColor);
-	ImGui::GetOverlayDrawList()->AddRectFilled(HealthBarBG1, HealthBarBG2, HealthBarBGColor);
-	ImGui::GetOverlayDrawList()->AddRectFilled(HealthBar1, HealthBar2, HealthBarColor);
+	ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBarBDR1, HealthBarBDR2, HealthBarBDRColor);
+	ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBarBG1, HealthBarBG2, HealthBarBGColor);
+	ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBar1, HealthBar2, HealthBarColor);
 
 	// Armour Bar
 	if(fArmour > 0.0f)
@@ -198,9 +190,9 @@ void CPlayerTags::Draw(VECTOR* vec, char* szName, uint32_t dwColor,
 		fArmour *= fWidth/100.0f;
 		fArmour -= (fWidth/2);
 		HealthBar2.x = Out.X + fArmour;
-		ImGui::GetOverlayDrawList()->AddRectFilled(HealthBarBDR1, HealthBarBDR2, HealthBarBDRColor);
-		ImGui::GetOverlayDrawList()->AddRectFilled(HealthBarBG1, HealthBarBG2, HealthBarBGColor);
-		ImGui::GetOverlayDrawList()->AddRectFilled(HealthBar1, HealthBar2, HealthBarColor);
+		ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBarBDR1, HealthBarBDR2, HealthBarBDRColor);
+		ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBarBG1, HealthBarBG2, HealthBarBGColor);
+		ImGui::GetBackgroundDrawList()->AddRectFilled(HealthBar1, HealthBar2, HealthBarColor);
 	}
 
 	// AFK Icon
@@ -208,6 +200,6 @@ void CPlayerTags::Draw(VECTOR* vec, char* szName, uint32_t dwColor,
 	{
 		ImVec2 a = ImVec2(HealthBarBDR1.x - (pGUI->GetFontSize()*1.4f), HealthBarBDR1.y);
 		ImVec2 b = ImVec2(a.x + (pGUI->GetFontSize()*1.3f), a.y + (pGUI->GetFontSize()*1.3f));
-		ImGui::GetOverlayDrawList()->AddImage((ImTextureID)m_pAfk_icon->raster, a, b);
+		ImGui::GetBackgroundDrawList()->AddImage((ImTextureID)m_pAfk_icon->raster, a, b);
 	}
 }

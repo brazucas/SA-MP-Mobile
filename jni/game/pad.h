@@ -34,9 +34,11 @@ enum ePadKeys
 	KEY_ANALOG_DOWN,		// NUM2 		| 	NUM2				|	4096
 	KEY_ANALOG_LEFT,		// NUM4			| 	NUM4				|	8192
 	KEY_ANALOG_RIGHT,		// NUM6			| 	NUM6				| 	16384
+	SIZE,
 	KEY_YES,				// Y 			| 	Y 					| 	65536
 	KEY_NO,					// N 			| 	N 					| 	131072
-	SIZE
+	KEY_CTRL_BACK, 			// H 			|   H 					|	262144
+	
 };
 
 typedef struct
